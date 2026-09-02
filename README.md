@@ -86,13 +86,13 @@ The current phase focuses on defining the research problem, objectives, methodol
 The repository will gradually contain:
 
 ```text
-cipher-valley/
-├── README.md
-├── docs/
-│   └── phase-1/
-├── src/
-├── cpp/
-├── game/
-├── data/
-├── assets/
-└── tests/
+cipher-valley
+. README.md
+. docs
+. phase-1
+. src
+. cpp
+. game
+. data
+. assets
+. tests
