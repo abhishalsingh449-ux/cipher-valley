@@ -1,0 +1,88 @@
+#include <iostream>
+#include <string>
+using namespace std;
+
+class Item
+{
+private:
+    string name;
+    int quantity;
+    string description;
+
+public:
+
+    // Constructor
+    Item(string itemName, int itemQuantity, string itemDescription)
+    {
+        name = itemName;
+        quantity = itemQuantity;
+        description = itemDescription;
+    }
+
+    // Display item
+    void displayItem()
+    {
+        cout << "\n--- ITEM ---" << endl;
+        cout << "Name: " << name << endl;
+        cout << "Quantity: " << quantity << endl;
+        cout << "Description: " << description << endl;
+    }
+
+    // Add quantity
+    void addItem(int amount)
+    {
+        quantity += amount;
+
+        cout << amount << " "
+             << name << " added." << endl;
+    }
+
+    // Use item
+    void useItem()
+    {
+        if (quantity > 0)
+        {
+            quantity--;
+
+            cout << name << " used." << endl;
+        }
+        else
+        {
+            cout << "Item not available." << endl;
+        }
+    }
+};
+
+
+int main()
+{
+    Item coffee(
+        "Coffee",
+        3,
+        "Restores player energy"
+    );
+
+    Item programmingBook(
+        "Programming Book",
+        1,
+        "Contains Linked List concepts"
+    );
+
+    Item digitalPad(
+        "Digital Pad",
+        1,
+        "Used for coding activities"
+    );
+
+    coffee.displayItem();
+
+    coffee.useItem();
+
+    coffee.addItem(2);
+
+    programmingBook.displayItem();
+
+    digitalPad.displayItem();
+
+    return 0;
+}
