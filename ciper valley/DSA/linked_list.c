@@ -24,6 +24,13 @@ void addQuest(int id, const char name[])
 
     newQuest = (struct Quest *)malloc(sizeof(struct Quest));
 
+    newQuest = malloc(sizeof(struct Quest));
+
+if (newQuest == NULL)
+{
+    printf("Memory allocation failed.\n");
+    return;
+}
     newQuest->id = id;
     strcpy(newQuest->name, name);
     newQuest->completed = 0;
