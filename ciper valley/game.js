@@ -1,9 +1,55 @@
+
+
+// ==========================================
+// C LINKED LIST MODULE
+// ==========================================
+
+let linkedListModule = null;
+
+const linkedListReady = createLinked_list()
+    .then((Module) => {
+        linkedListModule = Module;
+
+        // Register the quest once when the C module loads
+        linkedListModule.ccall(
+            "addQuest",
+            null,
+            ["number", "string"],
+            [1, "Learn Linked List"]
+        );
+
+        console.log("C Linked List loaded successfully!");
+        console.log("Quest registered in C linked list.");
+
+        // Display the initial quest list
+        linkedListModule.ccall(
+            "displayQuests",
+            null,
+            [],
+            []
+        );
+
+        return Module;
+    })
+    .catch((error) => {
+        console.error(
+            "Failed to load C Linked List:",
+            error
+        );
+
+        throw error;
+    });
+
 class GameScene extends Phaser.Scene {
 
     constructor() {
         super("GameScene");
 
+        // GAME PROGRESS
         this.dsaOpen = false;
+        this.questCompleted = false;
+        this.dsaXP = 0;
+        this.answerSubmitted = false;
     }
 
 
@@ -13,7 +59,13 @@ class GameScene extends Phaser.Scene {
 
     showDSAChallenge() {
 
+        // Prevent opening another challenge while one is active
+        if (this.dsaOpen) {
+            return;
+        }
+
         this.dsaOpen = true;
+        this.answerSubmitted = false;
 
         // Stop player movement
         this.player.body.setVelocity(0);
@@ -22,29 +74,16 @@ class GameScene extends Phaser.Scene {
         this.interactionBox.setVisible(false);
         this.interactionText.setVisible(false);
 
-        // ==========================================
         // FULL SCREEN BACKGROUND
-        // ==========================================
-
         this.challengeBox = this.add.rectangle(
-            400,
-            300,
-            800,
-            600,
-            0x111111,
-            1
+            400, 300, 800, 600, 0x111111, 1
         );
 
         this.challengeBox.setDepth(20);
 
-
-        // ==========================================
         // TITLE
-        // ==========================================
-
         this.dsaTitle = this.add.text(
-            400,
-            55,
+            400, 55,
             "CIPHER VALLEY",
             {
                 fontSize: "32px",
@@ -56,10 +95,9 @@ class GameScene extends Phaser.Scene {
         this.dsaTitle.setOrigin(0.5);
         this.dsaTitle.setDepth(21);
 
-
+        // SUBTITLE
         this.dsaSubtitle = this.add.text(
-            400,
-            95,
+            400, 95,
             "DSA TRAINING — LINKED LIST",
             {
                 fontSize: "18px",
@@ -70,18 +108,20 @@ class GameScene extends Phaser.Scene {
         this.dsaSubtitle.setOrigin(0.5);
         this.dsaSubtitle.setDepth(21);
 
-
-        // ==========================================
         // QUESTION
-        // ==========================================
+        const question = this.questCompleted
+            ? "QUEST ALREADY COMPLETED!\n\n" +
+              "You learned that the last node's\n" +
+              "next pointer contains NULL.\n\n" +
+              "Total DSA XP: " + this.dsaXP
+            : "A linked list contains:\n\n" +
+              "10 → 20 → 30 → NULL\n\n" +
+              "What does the next pointer\n" +
+              "of node 30 contain?";
 
         this.questionText = this.add.text(
-            400,
-            190,
-            "A linked list contains:\n\n" +
-            "10 → 20 → 30 → NULL\n\n" +
-            "What does the next pointer\n" +
-            "of node 30 contain?",
+            400, 190,
+            question,
             {
                 fontSize: "23px",
                 color: "#ffffff",
@@ -92,47 +132,21 @@ class GameScene extends Phaser.Scene {
         this.questionText.setOrigin(0.5);
         this.questionText.setDepth(21);
 
+        // ANSWER OPTIONS
+        this.dsaOptions = [];
 
-        // ==========================================
-        // OPTIONS
-        // ==========================================
+        if (!this.questCompleted) {
 
-        this.createOption(
-            220,
-            380,
-            "A) 10",
-            false
-        );
+            this.createOption(220, 380, "A) 10", false);
+            this.createOption(580, 380, "B) 20", false);
+            this.createOption(220, 460, "C) NULL", true);
+            this.createOption(580, 460, "D) 30", false);
 
-        this.createOption(
-            580,
-            380,
-            "B) 20",
-            false
-        );
+        }
 
-        this.createOption(
-            220,
-            460,
-            "C) NULL",
-            true
-        );
-
-        this.createOption(
-            580,
-            460,
-            "D) 30",
-            false
-        );
-
-
-        // ==========================================
         // EXIT BUTTON
-        // ==========================================
-
         this.exitButton = this.add.text(
-            400,
-            550,
+            400, 550,
             "EXIT  [E]",
             {
                 fontSize: "18px",
@@ -149,13 +163,11 @@ class GameScene extends Phaser.Scene {
         this.exitButton.setDepth(21);
         this.exitButton.setInteractive();
 
-
         this.exitButton.on("pointerover", () => {
             this.exitButton.setStyle({
                 backgroundColor: "#555555"
             });
         });
-
 
         this.exitButton.on("pointerout", () => {
             this.exitButton.setStyle({
@@ -163,17 +175,14 @@ class GameScene extends Phaser.Scene {
             });
         });
 
-
         this.exitButton.on("pointerdown", () => {
             this.closeDSAChallenge();
         });
 
-
-        // E key for exit
-        this.dsaExitKey =
-            this.input.keyboard.addKey(
-                Phaser.Input.Keyboard.KeyCodes.E
-            );
+        // E KEY FOR EXIT
+        this.dsaExitKey = this.input.keyboard.addKey(
+            Phaser.Input.Keyboard.KeyCodes.E
+        );
     }
 
 
@@ -184,8 +193,7 @@ class GameScene extends Phaser.Scene {
     createOption(x, y, text, correct) {
 
         const option = this.add.text(
-            x,
-            y,
+            x, y,
             text,
             {
                 fontSize: "23px",
@@ -202,20 +210,18 @@ class GameScene extends Phaser.Scene {
         option.setDepth(21);
         option.setInteractive();
 
-
-        // Store correct answer information
         option.correctAnswer = correct;
 
-
-        // Hover
+        // HOVER EFFECT
         option.on("pointerover", () => {
 
-            option.setStyle({
-                backgroundColor: "#444444"
-            });
+            if (!this.answerSubmitted) {
+                option.setStyle({
+                    backgroundColor: "#444444"
+                });
+            }
 
         });
-
 
         option.on("pointerout", () => {
 
@@ -225,11 +231,21 @@ class GameScene extends Phaser.Scene {
 
         });
 
-
-        // Click
+        // ANSWER CLICK
         option.on("pointerdown", () => {
 
+            // Ignore further clicks after completion
+            if (
+                this.answerSubmitted ||
+                this.questCompleted
+            ) {
+                return;
+            }
+
             if (option.correctAnswer) {
+
+                // Lock answers immediately
+                this.answerSubmitted = true;
 
                 this.correctDSAAnswer();
 
@@ -241,12 +257,6 @@ class GameScene extends Phaser.Scene {
 
         });
 
-
-        // Store option
-        if (!this.dsaOptions) {
-            this.dsaOptions = [];
-        }
-
         this.dsaOptions.push(option);
     }
 
@@ -257,22 +267,60 @@ class GameScene extends Phaser.Scene {
 
     correctDSAAnswer() {
 
+        // Prevent duplicate rewards
+        if (this.questCompleted) {
+            return;
+        }
+
+        // Mark quest complete
+this.questCompleted = true;
+
+// Complete the quest using the actual C linked list
+if (linkedListModule) {
+    
+
+    linkedListModule.ccall(
+        "completeQuest",
+        null,
+        ["number"],
+        [1]
+    );
+
+    linkedListModule.ccall(
+        "displayQuests",
+        null,
+        [],
+        []
+    );
+
+    console.log("C linked-list quest completed successfully!");
+}
+
+// Award XP once
+this.dsaXP += 10;
+
+        // Display feedback
         this.questionText.setText(
-            "CORRECT!\n\n" +
+            "QUEST COMPLETED!\n\n" +
             "The last node has no next node.\n" +
-            "Therefore its next pointer is NULL.\n\n" +
-            "+10 DSA XP"
+            "Its next pointer is NULL.\n\n" +
+            "+10 DSA XP\n\n" +
+            "Total DSA XP: " + this.dsaXP
         );
 
+        // Disable all answer options
+        this.dsaOptions.forEach(option => {
+            option.disableInteractive();
+            option.setStyle({
+                backgroundColor: "#222222"
+            });
+        });
 
-        // Disable answers
-        if (this.dsaOptions) {
+        // Update HUD
+        this.updateQuestHUD();
 
-            this.dsaOptions.forEach(
-                option => option.disableInteractive()
-            );
-
-        }
+        console.log("Quest completed!");
+        console.log("Total DSA XP:", this.dsaXP);
     }
 
 
@@ -285,9 +333,37 @@ class GameScene extends Phaser.Scene {
         this.questionText.setText(
             "NOT QUITE!\n\n" +
             "Node 30 is the last node.\n\n" +
-            "The last node points to NULL.\n\n" +
+            "Its next pointer contains NULL.\n\n" +
             "Try another answer."
         );
+
+    }
+
+
+    // ==========================================
+    // QUEST HUD
+    // ==========================================
+
+    updateQuestHUD() {
+
+        if (this.questStatusText) {
+
+            this.questStatusText.setText(
+                this.questCompleted
+                    ? "Quest: Linked List — COMPLETED"
+                    : "Quest: Linked List — ACTIVE"
+            );
+
+        }
+
+        if (this.xpText) {
+
+            this.xpText.setText(
+                "DSA XP: " + this.dsaXP
+            );
+
+        }
+
     }
 
 
@@ -299,49 +375,53 @@ class GameScene extends Phaser.Scene {
 
         this.dsaOpen = false;
 
-
+        // Destroy challenge background
         if (this.challengeBox) {
             this.challengeBox.destroy();
         }
 
+        // Destroy title
         if (this.dsaTitle) {
             this.dsaTitle.destroy();
         }
 
+        // Destroy subtitle
         if (this.dsaSubtitle) {
             this.dsaSubtitle.destroy();
         }
 
+        // Destroy question
         if (this.questionText) {
             this.questionText.destroy();
         }
 
+        // Destroy exit button
         if (this.exitButton) {
             this.exitButton.destroy();
         }
 
-
-        // Destroy answer options
+        // Destroy options
         if (this.dsaOptions) {
 
-            this.dsaOptions.forEach(
-                option => option.destroy()
-            );
+            this.dsaOptions.forEach(option => {
+                option.destroy();
+            });
 
             this.dsaOptions = [];
         }
 
-
-        // Destroy E key listener
+        // Destroy exit key
         if (this.dsaExitKey) {
             this.dsaExitKey.destroy();
             this.dsaExitKey = null;
         }
 
-
-        // Show interaction UI again
+        // Hide interaction UI
         this.interactionBox.setVisible(false);
         this.interactionText.setVisible(false);
+
+        // Refresh quest status
+        this.updateQuestHUD();
     }
 
 
@@ -362,56 +442,31 @@ class GameScene extends Phaser.Scene {
 
     create() {
 
-
-        // ==========================================
         // CAMPUS BACKGROUND
-        // ==========================================
-
         this.add.rectangle(
-            400,
-            300,
-            800,
-            600,
+            400, 300, 800, 600,
             0x3a7d44
         );
 
-
-        // ==========================================
         // CAMPUS PATHS
-        // ==========================================
-
         this.add.rectangle(
-            400,
-            300,
-            800,
-            70,
+            400, 300, 800, 70,
             0xc2a878
         );
 
         this.add.rectangle(
-            500,
-            300,
-            70,
-            600,
+            500, 300, 70, 600,
             0xc2a878
         );
 
-
-        // ==========================================
         // PROGRAMMING LAB
-        // ==========================================
-
         this.lab = this.add.rectangle(
-            200,
-            150,
-            220,
-            120,
+            200, 150, 220, 120,
             0x555555
         );
 
         this.add.text(
-            125,
-            135,
+            125, 135,
             "PROGRAMMING LAB",
             {
                 fontSize: "18px",
@@ -419,22 +474,14 @@ class GameScene extends Phaser.Scene {
             }
         );
 
-
-        // ==========================================
         // HOSTEL
-        // ==========================================
-
         this.hostel = this.add.rectangle(
-            650,
-            150,
-            180,
-            120,
+            650, 150, 180, 120,
             0x8b5a2b
         );
 
         this.add.text(
-            600,
-            135,
+            600, 135,
             "HOSTEL",
             {
                 fontSize: "18px",
@@ -442,48 +489,25 @@ class GameScene extends Phaser.Scene {
             }
         );
 
-
-        // ==========================================
         // PLAYER
-        // ==========================================
-
         this.player = this.add.rectangle(
-            400,
-            300,
-            40,
-            40,
+            400, 300, 40, 40,
             0xff0000
         );
 
-
-        // ==========================================
         // PLAYER PHYSICS
-        // ==========================================
+        this.physics.add.existing(this.player);
 
-        this.physics.add.existing(
-            this.player
-        );
+        this.player.body.setCollideWorldBounds(true);
 
-        this.player.body.setCollideWorldBounds(
-            true
-        );
-
-
-        // ==========================================
         // MENTOR NPC
-        // ==========================================
-
         this.npc = this.add.rectangle(
-            600,
-            350,
-            40,
-            40,
+            600, 350, 40, 40,
             0x0000ff
         );
 
         this.add.text(
-            570,
-            375,
+            570, 375,
             "MENTOR",
             {
                 fontSize: "16px",
@@ -491,131 +515,94 @@ class GameScene extends Phaser.Scene {
             }
         );
 
-
-        // ==========================================
         // LAB PHYSICS
-        // ==========================================
+        this.physics.add.existing(this.lab, true);
 
-        this.physics.add.existing(
-            this.lab,
-            true
-        );
-
-
-        // ==========================================
         // HOSTEL PHYSICS
-        // ==========================================
+        this.physics.add.existing(this.hostel, true);
 
-        this.physics.add.existing(
-            this.hostel,
-            true
-        );
-
-
-        // ==========================================
         // NPC PHYSICS
-        // ==========================================
+        this.physics.add.existing(this.npc, true);
 
-        this.physics.add.existing(
-            this.npc,
-            true
-        );
-
-
-        // ==========================================
         // COLLISIONS
-        // ==========================================
+        this.physics.add.collider(this.player, this.lab);
+        this.physics.add.collider(this.player, this.hostel);
+        this.physics.add.collider(this.player, this.npc);
 
-        this.physics.add.collider(
-            this.player,
-            this.lab
-        );
-
-        this.physics.add.collider(
-            this.player,
-            this.hostel
-        );
-
-
-        // ==========================================
         // KEYBOARD CONTROLS
-        // ==========================================
+        this.keys = this.input.keyboard.addKeys({
+            W: Phaser.Input.Keyboard.KeyCodes.W,
+            A: Phaser.Input.Keyboard.KeyCodes.A,
+            S: Phaser.Input.Keyboard.KeyCodes.S,
+            D: Phaser.Input.Keyboard.KeyCodes.D
+        });
 
-        this.keys =
-            this.input.keyboard.addKeys({
-
-                W: Phaser.Input.Keyboard.KeyCodes.W,
-
-                A: Phaser.Input.Keyboard.KeyCodes.A,
-
-                S: Phaser.Input.Keyboard.KeyCodes.S,
-
-                D: Phaser.Input.Keyboard.KeyCodes.D
-
-            });
-
-
-        // ==========================================
         // INTERACTION SETTINGS
-        // ==========================================
-
         this.interactionDistance = 80;
 
-        this.interactKey =
-            this.input.keyboard.addKey(
-                Phaser.Input.Keyboard.KeyCodes.E
-            );
+        this.interactKey = this.input.keyboard.addKey(
+            Phaser.Input.Keyboard.KeyCodes.E
+        );
 
-
-        // ==========================================
-        // INTERACTION RECTANGLE
-        // ==========================================
-
-        this.interactionBox =
-            this.add.rectangle(
-                400,
-                520,
-                300,
-                55,
-                0x000000
-            );
+        // INTERACTION BACKGROUND
+        this.interactionBox = this.add.rectangle(
+            400, 520, 300, 55,
+            0x000000
+        );
 
         this.interactionBox.setAlpha(0.85);
-
         this.interactionBox.setDepth(10);
 
-
-        // ==========================================
         // INTERACTION TEXT
-        // ==========================================
-
-        this.interactionText =
-            this.add.text(
-                400,
-                520,
-                "",
-                {
-                    fontSize: "20px",
-                    color: "#ffffff"
-                }
-            );
-
-        this.interactionText.setOrigin(
-            0.5
+        this.interactionText = this.add.text(
+            400, 520, "",
+            {
+                fontSize: "20px",
+                color: "#ffffff"
+            }
         );
 
+        this.interactionText.setOrigin(0.5);
         this.interactionText.setDepth(11);
 
+        this.interactionBox.setVisible(false);
+        this.interactionText.setVisible(false);
 
-        // Hide interaction UI initially
-
-        this.interactionBox.setVisible(
-            false
+        // QUEST STATUS HUD
+        this.questStatusText = this.add.text(
+            15, 15,
+            "Quest: Linked List — ACTIVE",
+            {
+                fontSize: "16px",
+                color: "#ffffff",
+                backgroundColor: "#000000",
+                padding: {
+                    x: 8,
+                    y: 6
+                }
+            }
         );
 
-        this.interactionText.setVisible(
-            false
+        this.questStatusText.setDepth(5);
+
+        // XP HUD
+        this.xpText = this.add.text(
+            15, 55,
+            "DSA XP: 0",
+            {
+                fontSize: "16px",
+                color: "#ffffff",
+                backgroundColor: "#000000",
+                padding: {
+                    x: 8,
+                    y: 6
+                }
+            }
         );
+
+        this.xpText.setDepth(5);
+
+        this.updateQuestHUD();
     }
 
 
@@ -625,20 +612,11 @@ class GameScene extends Phaser.Scene {
 
     update() {
 
-
-        // ==========================================
-        // DSA SCREEN IS OPEN
-        // ==========================================
-
+        // DSA SCREEN OPEN
         if (this.dsaOpen) {
 
-            // Freeze player
-            this.player.body.setVelocity(
-                0
-            );
+            this.player.body.setVelocity(0);
 
-
-            // E exits the DSA screen
             if (
                 Phaser.Input.Keyboard.JustDown(
                     this.dsaExitKey
@@ -652,136 +630,74 @@ class GameScene extends Phaser.Scene {
             return;
         }
 
-
-        // ==========================================
         // MOVEMENT SPEED
-        // ==========================================
-
         const speed = 200;
 
-
-        // ==========================================
         // RESET VELOCITY
-        // ==========================================
+        this.player.body.setVelocity(0);
 
-        this.player.body.setVelocity(
-            0
+        // MOVE LEFT
+        if (this.keys.A.isDown) {
+            this.player.body.setVelocityX(-speed);
+        }
+
+        // MOVE RIGHT
+        if (this.keys.D.isDown) {
+            this.player.body.setVelocityX(speed);
+        }
+
+        // MOVE UP
+        if (this.keys.W.isDown) {
+            this.player.body.setVelocityY(-speed);
+        }
+
+        // MOVE DOWN
+        if (this.keys.S.isDown) {
+            this.player.body.setVelocityY(speed);
+        }
+
+        // NORMALIZE DIAGONAL MOVEMENT
+        this.player.body.velocity.normalize().scale(speed);
+
+        // DISTANCE FROM MENTOR
+        const distance = Phaser.Math.Distance.Between(
+            this.player.x,
+            this.player.y,
+            this.npc.x,
+            this.npc.y
         );
 
+        // INTERACTION UI
+        if (distance <= this.interactionDistance) {
 
-        // ==========================================
-        // MOVE LEFT
-        // ==========================================
-
-        if (this.keys.A.isDown) {
-
-            this.player.body.setVelocityX(
-                -speed
-            );
-
-        }
-
-
-        // ==========================================
-        // MOVE RIGHT
-        // ==========================================
-
-        if (this.keys.D.isDown) {
-
-            this.player.body.setVelocityX(
-                speed
-            );
-
-        }
-
-
-        // ==========================================
-        // MOVE UP
-        // ==========================================
-
-        if (this.keys.W.isDown) {
-
-            this.player.body.setVelocityY(
-                -speed
-            );
-
-        }
-
-
-        // ==========================================
-        // MOVE DOWN
-        // ==========================================
-
-        if (this.keys.S.isDown) {
-
-            this.player.body.setVelocityY(
-                speed
-            );
-
-        }
-
-
-        // ==========================================
-        // DISTANCE FROM MENTOR
-        // ==========================================
-
-        const distance =
-            Phaser.Math.Distance.Between(
-                this.player.x,
-                this.player.y,
-                this.npc.x,
-                this.npc.y
-            );
-
-
-        // ==========================================
-        // SHOW INTERACTION UI
-        // ==========================================
-
-        if (
-            distance <= this.interactionDistance
-        ) {
-
-            this.interactionBox.setVisible(
-                true
-            );
-
-            this.interactionText.setVisible(
-                true
-            );
+            this.interactionBox.setVisible(true);
+            this.interactionText.setVisible(true);
 
             this.interactionText.setText(
-                "Press E to interact"
+                this.questCompleted
+                    ? "Press E to revisit mentor"
+                    : "Press E to interact"
             );
 
         } else {
 
-            this.interactionBox.setVisible(
-                false
-            );
-
-            this.interactionText.setVisible(
-                false
-            );
+            this.interactionBox.setVisible(false);
+            this.interactionText.setVisible(false);
 
         }
 
-
-        // ==========================================
-        // PRESS E
-        // ==========================================
-
+        // PRESS E TO INTERACT
         if (
             distance <= this.interactionDistance &&
-            Phaser.Input.Keyboard.JustDown(
-                this.interactKey
-            )
+            Phaser.Input.Keyboard.JustDown(this.interactKey)
         ) {
 
             this.showDSAChallenge();
 
         }
+
     }
+
 }
 
 
@@ -804,9 +720,7 @@ const config = {
         default: "arcade",
 
         arcade: {
-
             debug: false
-
         }
 
     },
@@ -820,6 +734,4 @@ const config = {
 // START GAME
 // ==========================================
 
-const game =
-    new Phaser.Game(config);
-    
+const game = new Phaser.Game(config);
