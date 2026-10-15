@@ -37,7 +37,24 @@ const linkedListReady = createLinked_list()
             error
         );
 
-        throw error;
+        // Resolve to null so the game can handle the failure gracefully.
+        return null;
+    });
+
+
+// ==========================================
+// C HASH TABLE INVENTORY MODULE
+// ==========================================
+let hashTableModule = null;
+const hashTableReady = createHash_table()
+    .then((Module) => {
+        hashTableModule = Module;
+        console.log("C hash-table inventory loaded successfully!");
+        return Module;
+    })
+    .catch((error) => {
+        console.error("Failed to load C hash-table inventory:", error);
+        return null;
     });
 
 class GameScene extends Phaser.Scene {
@@ -50,6 +67,14 @@ class GameScene extends Phaser.Scene {
         this.questCompleted = false;
         this.dsaXP = 0;
         this.answerSubmitted = false;
+        this.inventoryOpen = false;
+        this.inventoryMessage = "";
+
+        // NOTEBOOK QUEST PROGRESS
+        this.notebookQuestAccepted = false;
+        this.notebookQuestCompleted = false;
+        this.questDialogueOpen = false;
+        this.questDialogueObjects = [];
     }
 
 
@@ -265,41 +290,62 @@ class GameScene extends Phaser.Scene {
     // CORRECT ANSWER
     // ==========================================
 
-    correctDSAAnswer() {
+    async correctDSAAnswer() {
 
-        // Prevent duplicate rewards
+        // Prevent duplicate rewards.
         if (this.questCompleted) {
             return;
         }
 
-        // Mark quest complete
-this.questCompleted = true;
+        // Wait until the C/WebAssembly module has finished initializing.
+        const module = await linkedListReady;
 
-// Complete the quest using the actual C linked list
-if (linkedListModule) {
-    
+        if (!module) {
+            this.questionText.setText(
+                "C LINKED-LIST MODULE UNAVAILABLE\n\n" +
+                "The quest has not been completed and no XP was awarded.\n" +
+                "Please check the browser console, then try again."
+            );
 
-    linkedListModule.ccall(
-        "completeQuest",
-        null,
-        ["number"],
-        [1]
-    );
+            this.answerSubmitted = false;
+            return;
+        }
 
-    linkedListModule.ccall(
-        "displayQuests",
-        null,
-        [],
-        []
-    );
+        try {
+            // Update the actual C linked-list quest before awarding game XP.
+            module.ccall(
+                "completeQuest",
+                null,
+                ["number"],
+                [1]
+            );
 
-    console.log("C linked-list quest completed successfully!");
-}
+            module.ccall(
+                "displayQuests",
+                null,
+                [],
+                []
+            );
 
-// Award XP once
-this.dsaXP += 10;
+            console.log("C linked-list quest completed successfully!");
+        } catch (error) {
+            console.error("Failed to complete quest in C linked list:", error);
 
-        // Display feedback
+            this.questionText.setText(
+                "QUEST COMPLETION FAILED\n\n" +
+                "The C linked-list update failed, so no XP was awarded.\n" +
+                "Check the browser console and try again."
+            );
+
+            this.answerSubmitted = false;
+            return;
+        }
+
+        // Only mark the quest complete and award XP after C succeeds.
+        this.questCompleted = true;
+        this.dsaXP += 10;
+
+        // Display feedback.
         this.questionText.setText(
             "QUEST COMPLETED!\n\n" +
             "The last node has no next node.\n" +
@@ -308,7 +354,7 @@ this.dsaXP += 10;
             "Total DSA XP: " + this.dsaXP
         );
 
-        // Disable all answer options
+        // Disable all answer options.
         this.dsaOptions.forEach(option => {
             option.disableInteractive();
             option.setStyle({
@@ -316,7 +362,7 @@ this.dsaXP += 10;
             });
         });
 
-        // Update HUD
+        // Update HUD.
         this.updateQuestHUD();
 
         console.log("Quest completed!");
@@ -362,6 +408,16 @@ this.dsaXP += 10;
                 "DSA XP: " + this.dsaXP
             );
 
+        }
+
+        if (this.notebookQuestStatusText) {
+            this.notebookQuestStatusText.setText(
+                this.notebookQuestCompleted
+                    ? "Quest: Notebook — COMPLETED"
+                    : this.notebookQuestAccepted
+                        ? "Quest: Notebook — ACTIVE"
+                        : "Quest: Notebook — LOCKED"
+            );
         }
 
     }
@@ -422,6 +478,354 @@ this.dsaXP += 10;
 
         // Refresh quest status
         this.updateQuestHUD();
+    }
+
+
+    // ==========================================
+    // C HASH TABLE INVENTORY UI
+    // Press I to open/close this screen.
+    // ==========================================
+
+    async showInventory() {
+        if (this.inventoryOpen) return;
+        this.inventoryOpen = true;
+        this.player.body.setVelocity(0);
+
+        this.interactionBox.setVisible(false);
+        this.interactionText.setVisible(false);
+
+        this.inventoryObjects = [];
+        const add = (obj) => {
+            obj.setDepth(40);
+            this.inventoryObjects.push(obj);
+            return obj;
+        };
+
+        add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
+        add(this.add.text(400, 48, "CIPHER VALLEY — INVENTORY", {
+            fontSize: "28px", color: "#ffffff", fontStyle: "bold"
+        }).setOrigin(0.5));
+        add(this.add.text(400, 84, "Powered by your C hash table (linear probing)", {
+            fontSize: "16px", color: "#b8d8d8"
+        }).setOrigin(0.5));
+
+        this.inventoryListText = add(this.add.text(95, 130, "Loading C inventory...", {
+            fontSize: "18px", color: "#ffffff", lineSpacing: 8,
+            wordWrap: { width: 610 }
+        }));
+        this.inventoryMessageText = add(this.add.text(400, 420, "", {
+            fontSize: "17px", color: "#ffe08a", align: "center",
+            wordWrap: { width: 650 }
+        }).setOrigin(0.5));
+
+        const button = (x, y, label, callback) => {
+            const b = add(this.add.text(x, y, label, {
+                fontSize: "17px", color: "#ffffff", backgroundColor: "#285943",
+                padding: { x: 12, y: 10 }
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+            b.on("pointerover", () => b.setStyle({ backgroundColor: "#397957" }));
+            b.on("pointerout", () => b.setStyle({ backgroundColor: "#285943" }));
+            b.on("pointerdown", callback);
+        };
+
+        button(145, 500, "Add Coffee +1", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."));
+        button(355, 500, "Add Notebook +1", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."));
+        button(565, 500, "Search Coffee", () => this.searchInventoryItem("Coffee"));
+        button(400, 555, "Close  [I / Esc]", () => this.closeInventory());
+
+        this.inventoryExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        await this.refreshInventoryList();
+    }
+
+    async addInventoryItem(name, description) {
+        const module = await hashTableReady;
+        if (!module) {
+            this.setInventoryMessage("C inventory module is unavailable. Check the console and confirm hash_table.js and hash_table.wasm are present.");
+            return;
+        }
+        try {
+            module.ccall("insertItem", null, ["string", "number", "string"], [name, 1, description]);
+            this.setInventoryMessage(name + " added/updated by the C hash table.");
+            await this.refreshInventoryList();
+        } catch (error) {
+            console.error("C hash-table insert failed:", error);
+            this.setInventoryMessage("Could not add the item. See the browser console.");
+        }
+    }
+
+    async searchInventoryItem(name) {
+        const module = await hashTableReady;
+        if (!module) {
+            this.setInventoryMessage("C inventory module is unavailable. Check the console.");
+            return;
+        }
+        try {
+            const quantity = module.ccall("searchItemQuantity", "number", ["string"], [name]);
+            this.setInventoryMessage(quantity >= 0
+                ? name + " found in the C hash table. Quantity: " + quantity
+                : name + " was not found in the C hash table.");
+        } catch (error) {
+            console.error("C hash-table search failed:", error);
+            this.setInventoryMessage("Search failed. See the browser console.");
+        }
+    }
+
+    async refreshInventoryList() {
+        if (!this.inventoryOpen || !this.inventoryListText) return;
+        const module = await hashTableReady;
+        if (!module) {
+            this.inventoryListText.setText("Inventory module failed to load.\n\nMake sure hash_table.js and hash_table.wasm are beside index.html.");
+            return;
+        }
+        try {
+            const count = module.ccall("getInventoryCount", "number", [], []);
+            if (count === 0) {
+                this.inventoryListText.setText("Your inventory is empty.\n\nUse the buttons below to add items.");
+                return;
+            }
+            const lines = ["ITEMS STORED IN THE C HASH TABLE", ""];
+            for (let i = 0; i < count; i++) {
+                const name = module.ccall("getItemNameAt", "string", ["number"], [i]);
+                const quantity = module.ccall("getItemQuantityAt", "number", ["number"], [i]);
+                const description = module.ccall("getItemDescriptionAt", "string", ["number"], [i]);
+                lines.push((i + 1) + ". " + name + "  × " + quantity);
+                lines.push("   " + description);
+                lines.push("");
+            }
+            this.inventoryListText.setText(lines.join("\n"));
+        } catch (error) {
+            console.error("Could not read C hash-table inventory:", error);
+            this.inventoryListText.setText("Could not read inventory. Check the browser console.");
+        }
+    }
+
+    setInventoryMessage(message) {
+        this.inventoryMessage = message;
+        if (this.inventoryMessageText) this.inventoryMessageText.setText(message);
+    }
+
+    closeInventory() {
+        this.inventoryOpen = false;
+        if (this.inventoryObjects) {
+            this.inventoryObjects.forEach(obj => obj.destroy());
+            this.inventoryObjects = [];
+        }
+        this.inventoryListText = null;
+        this.inventoryMessageText = null;
+        if (this.inventoryExitKey) {
+            this.inventoryExitKey.destroy();
+            this.inventoryExitKey = null;
+        }
+        if (this.interactionBox) this.interactionBox.setVisible(false);
+        if (this.interactionText) this.interactionText.setVisible(false);
+    }
+
+    // ==========================================
+    // NOTEBOOK QUEST + CAMPUS SHOP
+    // ==========================================
+
+    showQuestDialogue(title, message, buttons) {
+        if (this.questDialogueOpen) return;
+        this.questDialogueOpen = true;
+        this.player.body.setVelocity(0);
+        this.interactionBox.setVisible(false);
+        this.interactionText.setVisible(false);
+        this.questDialogueObjects = [];
+
+        const add = (obj) => {
+            obj.setDepth(60);
+            this.questDialogueObjects.push(obj);
+            return obj;
+        };
+
+        add(this.add.rectangle(400, 300, 800, 600, 0x081018, 0.78));
+        add(this.add.rectangle(400, 300, 590, 330, 0x182b35, 1)
+            .setStrokeStyle(3, 0x83c5be));
+
+        add(this.add.text(400, 190, title, {
+            fontSize: "25px",
+            color: "#ffffff",
+            fontStyle: "bold",
+            align: "center",
+            wordWrap: { width: 520 }
+        }).setOrigin(0.5));
+
+        add(this.add.text(400, 275, message, {
+            fontSize: "18px",
+            color: "#e8f1f2",
+            align: "center",
+            lineSpacing: 8,
+            wordWrap: { width: 510 }
+        }).setOrigin(0.5));
+
+        const buttonCount = buttons.length;
+        const positions = buttonCount === 1 ? [400] :
+            buttonCount === 2 ? [285, 515] :
+            buttons.map((_, i) => 170 + i * (460 / (buttonCount - 1)));
+
+        buttons.forEach((buttonInfo, index) => {
+            const button = add(this.add.text(positions[index], 390, buttonInfo.label, {
+                fontSize: "17px",
+                color: "#ffffff",
+                backgroundColor: "#285943",
+                padding: { x: 14, y: 11 }
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+
+            button.on("pointerover", () => {
+                button.setStyle({ backgroundColor: "#397957" });
+            });
+            button.on("pointerout", () => {
+                button.setStyle({ backgroundColor: "#285943" });
+            });
+            button.on("pointerdown", () => {
+                this.closeQuestDialogue();
+                if (typeof buttonInfo.callback === "function") {
+                    buttonInfo.callback();
+                }
+            });
+        });
+    }
+
+    closeQuestDialogue() {
+        this.questDialogueOpen = false;
+        if (this.questDialogueObjects) {
+            this.questDialogueObjects.forEach(obj => obj.destroy());
+            this.questDialogueObjects = [];
+        }
+    }
+
+    showNotebookQuestOffer() {
+        this.showQuestDialogue(
+            "MENTOR: THE MISSING NOTEBOOK",
+            "I need a notebook for our next DSA lesson. Visit the campus shop, collect one, then return to me.",
+            [
+                {
+                    label: "Accept Quest",
+                    callback: () => {
+                        this.notebookQuestAccepted = true;
+                        this.updateQuestHUD();
+                        this.showQuestDialogue(
+                            "QUEST ACCEPTED",
+                            "Find the Shopkeeper, press E, and collect a Notebook. Return to the Mentor afterward.",
+                            [{ label: "Let's go!", callback: () => {} }]
+                        );
+                    }
+                },
+                { label: "Later", callback: () => {} }
+            ]
+        );
+    }
+
+    async interactWithMentor() {
+        // Keep the original linked-list challenge as the first mentor activity.
+        if (!this.questCompleted) {
+            this.showDSAChallenge();
+            return;
+        }
+
+        if (this.notebookQuestCompleted) {
+            this.showQuestDialogue(
+                "NOTEBOOK QUEST COMPLETED",
+                "The mentor has your notebook ready for the next DSA lesson. You earned 20 XP for helping!",
+                [{ label: "Close", callback: () => {} }]
+            );
+            return;
+        }
+
+        if (!this.notebookQuestAccepted) {
+            this.showNotebookQuestOffer();
+            return;
+        }
+
+        const module = await hashTableReady;
+        if (!module) {
+            this.showQuestDialogue(
+                "INVENTORY UNAVAILABLE",
+                "The C hash-table module could not be loaded. Check the browser console and try again.",
+                [{ label: "Close", callback: () => {} }]
+            );
+            return;
+        }
+
+        try {
+            const quantity = module.ccall(
+                "searchItemQuantity",
+                "number",
+                ["string"],
+                ["Notebook"]
+            );
+
+            if (quantity > 0) {
+                this.notebookQuestCompleted = true;
+                this.dsaXP += 20;
+                this.updateQuestHUD();
+                this.showQuestDialogue(
+                    "QUEST COMPLETED!",
+                    "Notebook found in the C hash-table inventory. The mentor accepts it.\n\n+20 DSA XP\nTotal DSA XP: " + this.dsaXP,
+                    [{ label: "Continue", callback: () => {} }]
+                );
+            } else {
+                this.showQuestDialogue(
+                    "NOTEBOOK STILL NEEDED",
+                    "You haven't collected a Notebook yet. Visit the Shopkeeper, press E, and collect one from the campus shop.",
+                    [{ label: "Got it", callback: () => {} }]
+                );
+            }
+        } catch (error) {
+            console.error("Could not verify Notebook in C inventory:", error);
+            this.showQuestDialogue(
+                "INVENTORY CHECK FAILED",
+                "The game couldn't search the C hash table. Check the browser console for the first error.",
+                [{ label: "Close", callback: () => {} }]
+            );
+        }
+    }
+
+    async openCampusShop() {
+        this.showQuestDialogue(
+            "CAMPUS SHOP",
+            this.notebookQuestAccepted
+                ? "The mentor needs a Notebook. Collect one to complete the quest."
+                : "Welcome to the campus shop. You can collect a Notebook here for your DSA notes.",
+            [
+                {
+                    label: "Collect Notebook",
+                    callback: async () => {
+                        const module = await hashTableReady;
+                        if (!module) {
+                            this.showQuestDialogue(
+                                "SHOP UNAVAILABLE",
+                                "The C inventory module could not be loaded. Check the browser console.",
+                                [{ label: "Close", callback: () => {} }]
+                            );
+                            return;
+                        }
+
+                        try {
+                            module.ccall(
+                                "insertItem",
+                                null,
+                                ["string", "number", "string"],
+                                ["Notebook", 1, "A notebook for recording DSA clues."]
+                            );
+                            this.showQuestDialogue(
+                                "NOTEBOOK COLLECTED",
+                                "The Notebook has been stored in the C hash-table inventory. Return to the Mentor and press E.",
+                                [{ label: "Continue", callback: () => {} }]
+                            );
+                        } catch (error) {
+                            console.error("Could not add Notebook from campus shop:", error);
+                            this.showQuestDialogue(
+                                "COLLECTION FAILED",
+                                "The Notebook could not be added. Check the browser console.",
+                                [{ label: "Close", callback: () => {} }]
+                            );
+                        }
+                    }
+                },
+                { label: "Leave shop", callback: () => {} }
+            ]
+        );
     }
 
 
@@ -515,6 +919,21 @@ this.dsaXP += 10;
             }
         );
 
+        // SHOPKEEPER NPC — Notebook quest item source
+        this.shopkeeper = this.add.rectangle(
+            200, 400, 40, 40,
+            0xffa500
+        );
+
+        this.add.text(
+            150, 425,
+            "SHOPKEEPER",
+            {
+                fontSize: "15px",
+                color: "#ffffff"
+            }
+        );
+
         // LAB PHYSICS
         this.physics.add.existing(this.lab, true);
 
@@ -523,11 +942,13 @@ this.dsaXP += 10;
 
         // NPC PHYSICS
         this.physics.add.existing(this.npc, true);
+        this.physics.add.existing(this.shopkeeper, true);
 
         // COLLISIONS
         this.physics.add.collider(this.player, this.lab);
         this.physics.add.collider(this.player, this.hostel);
         this.physics.add.collider(this.player, this.npc);
+        this.physics.add.collider(this.player, this.shopkeeper);
 
         // KEYBOARD CONTROLS
         this.keys = this.input.keyboard.addKeys({
@@ -543,6 +964,9 @@ this.dsaXP += 10;
         this.interactKey = this.input.keyboard.addKey(
             Phaser.Input.Keyboard.KeyCodes.E
         );
+
+        // Open the C hash-table inventory at any time with I.
+        this.inventoryKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.I);
 
         // INTERACTION BACKGROUND
         this.interactionBox = this.add.rectangle(
@@ -602,6 +1026,24 @@ this.dsaXP += 10;
 
         this.xpText.setDepth(5);
 
+        this.notebookQuestStatusText = this.add.text(
+            15, 95,
+            "Quest: Notebook — LOCKED",
+            {
+                fontSize: "16px",
+                color: "#ffffff",
+                backgroundColor: "#000000",
+                padding: { x: 8, y: 6 }
+            }
+        );
+        this.notebookQuestStatusText.setDepth(5);
+
+        this.inventoryHintText = this.add.text(15, 135, "Press I: Inventory", {
+            fontSize: "15px", color: "#ffffff", backgroundColor: "#000000",
+            padding: { x: 8, y: 5 }
+        });
+        this.inventoryHintText.setDepth(5);
+
         this.updateQuestHUD();
     }
 
@@ -611,6 +1053,28 @@ this.dsaXP += 10;
     // ==========================================
 
     update() {
+
+        // Quest/shop dialogue pauses normal gameplay while open.
+        if (this.questDialogueOpen) {
+            this.player.body.setVelocity(0);
+            return;
+        }
+
+        // Inventory screen pauses normal gameplay while open.
+        if (this.inventoryOpen) {
+            this.player.body.setVelocity(0);
+            if (Phaser.Input.Keyboard.JustDown(this.inventoryKey) ||
+                (this.inventoryExitKey && Phaser.Input.Keyboard.JustDown(this.inventoryExitKey))) {
+                this.closeInventory();
+            }
+            return;
+        }
+
+        // Open the inventory using the C hash-table module.
+        if (this.inventoryKey && Phaser.Input.Keyboard.JustDown(this.inventoryKey)) {
+            this.showInventory();
+            return;
+        }
 
         // DSA SCREEN OPEN
         if (this.dsaOpen) {
@@ -659,41 +1123,49 @@ this.dsaXP += 10;
         // NORMALIZE DIAGONAL MOVEMENT
         this.player.body.velocity.normalize().scale(speed);
 
-        // DISTANCE FROM MENTOR
-        const distance = Phaser.Math.Distance.Between(
-            this.player.x,
-            this.player.y,
-            this.npc.x,
-            this.npc.y
+        // Find the closest interactable NPC.
+        const mentorDistance = Phaser.Math.Distance.Between(
+            this.player.x, this.player.y, this.npc.x, this.npc.y
+        );
+        const shopkeeperDistance = Phaser.Math.Distance.Between(
+            this.player.x, this.player.y, this.shopkeeper.x, this.shopkeeper.y
         );
 
-        // INTERACTION UI
-        if (distance <= this.interactionDistance) {
+        const nearShopkeeper =
+            shopkeeperDistance <= this.interactionDistance &&
+            shopkeeperDistance < mentorDistance;
+        const nearMentor =
+            mentorDistance <= this.interactionDistance &&
+            !nearShopkeeper;
 
+        // INTERACTION UI
+        if (nearMentor || nearShopkeeper) {
             this.interactionBox.setVisible(true);
             this.interactionText.setVisible(true);
 
-            this.interactionText.setText(
-                this.questCompleted
-                    ? "Press E to revisit mentor"
-                    : "Press E to interact"
-            );
-
+            if (nearShopkeeper) {
+                this.interactionText.setText("Press E to visit campus shop");
+            } else if (!this.questCompleted) {
+                this.interactionText.setText("Press E to interact with mentor");
+            } else if (this.notebookQuestCompleted) {
+                this.interactionText.setText("Press E to talk to mentor");
+            } else if (!this.notebookQuestAccepted) {
+                this.interactionText.setText("Press E to talk to mentor");
+            } else {
+                this.interactionText.setText("Press E to deliver Notebook");
+            }
         } else {
-
             this.interactionBox.setVisible(false);
             this.interactionText.setVisible(false);
-
         }
 
-        // PRESS E TO INTERACT
-        if (
-            distance <= this.interactionDistance &&
-            Phaser.Input.Keyboard.JustDown(this.interactKey)
-        ) {
-
-            this.showDSAChallenge();
-
+        // PRESS E TO INTERACT WITH THE CLOSEST NPC
+        if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+            if (nearShopkeeper) {
+                this.openCampusShop();
+            } else if (nearMentor) {
+                this.interactWithMentor();
+            }
         }
 
     }
