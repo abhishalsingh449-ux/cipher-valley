@@ -1,10 +1,52 @@
 
 
 // ==========================================
+// C++ PLAYER MODULE
+// ==========================================
+let cppPlayerModule = null;
+const cppPlayerReady = Promise.resolve()
+    .then(() => {
+        if (typeof createPlayerModule !== "function") {
+            throw new Error("createPlayerModule is unavailable. Check that C++/player_module.js is loaded before game.js.");
+        }
+        return createPlayerModule();
+    })
+    .then((Module) => {
+        cppPlayerModule = Module;
+        Module.ccall("playerInit", "number", ["string"], ["Cipher Valley Player"]);
+        console.log("C++ Player System Connected!");
+        return Module;
+    })
+    .catch((error) => {
+        console.error("Failed to load C++ Player module:", error);
+        return null;
+    });
+
+// ==========================================
 // C LINKED LIST MODULE
 // ==========================================
 
 let linkedListModule = null;
+
+let cppQuestModule = null;
+
+// Load the C++ quest module safely so a loading error does not stop Phaser.
+const cppQuestReady = Promise.resolve()
+    .then(() => {
+        if (typeof createQuestModule !== "function") {
+            throw new Error("createQuestModule is unavailable. Check the C++ script in index.html.");
+        }
+        return createQuestModule();
+    })
+    .then((Module) => {
+        cppQuestModule = Module;
+        console.log("C++ Quest System Connected!");
+        return Module;
+    })
+    .catch((error) => {
+        console.error("Failed to load C++ Quest module:", error);
+        return null;
+    });
 
 const linkedListReady = createLinked_list()
     .then((Module) => {
@@ -66,9 +108,22 @@ class GameScene extends Phaser.Scene {
         this.dsaOpen = false;
         this.questCompleted = false;
         this.dsaXP = 0;
+        this.playerEnergy = 100;
+        this.playerLevel = 1;
+        this.playerTotalXP = 0;
+        this.nextEnergyTick = 0;
+        this.playerStatsText = null;
         this.answerSubmitted = false;
         this.inventoryOpen = false;
         this.inventoryMessage = "";
+
+        // MANDATORY OPENING QUEST: THE COFFEE CRISIS
+        this.coffeeQuestAccepted = false;
+        this.coffeeQuestCompleted = false;
+        this.coffeeChallengeOpen = false;
+        this.coffeeHintLevel = 0;
+        this.coffeeAttempts = 0;
+        this.coffeeOverlayElements = [];
 
         // NOTEBOOK QUEST PROGRESS
         this.notebookQuestAccepted = false;
@@ -138,7 +193,7 @@ class GameScene extends Phaser.Scene {
             ? "QUEST ALREADY COMPLETED!\n\n" +
               "You learned that the last node's\n" +
               "next pointer contains NULL.\n\n" +
-              "Total DSA XP: " + this.dsaXP
+              "Total XP: " + this.dsaXP
             : "A linked list contains:\n\n" +
               "10 → 20 → 30 → NULL\n\n" +
               "What does the next pointer\n" +
@@ -297,6 +352,18 @@ class GameScene extends Phaser.Scene {
             return;
         }
 
+        // The Player module must be ready before quest modules are mutated.
+        const playerModule = await cppPlayerReady;
+        if (!playerModule) {
+            this.questionText.setText(
+                "C++ PLAYER MODULE UNAVAILABLE\n\n" +
+                "The linked-list quest has not been completed and no XP was awarded.\n" +
+                "Check that player_module.js and player_module.wasm exist and that index.html loads player_module.js before game.js."
+            );
+            this.answerSubmitted = false;
+            return;
+        }
+
         // Wait until the C/WebAssembly module has finished initializing.
         const module = await linkedListReady;
 
@@ -341,17 +408,56 @@ class GameScene extends Phaser.Scene {
             return;
         }
 
-        // Only mark the quest complete and award XP after C succeeds.
+// Complete the quest through C++ as well.
+        try {
+            const cppModule = await cppQuestReady;
+
+            if (!cppModule) {
+                this.questionText.setText(
+                    "C++ QUEST MODULE UNAVAILABLE\n\n" +
+                    "Check that C++/quest_module.js and C++/quest_module.wasm exist, " +
+                    "and that index.html loads quest_module.js before game.js."
+                );
+                this.answerSubmitted = false;
+                return;
+            }
+
+            const cppComplete = cppModule.ccall(
+                "completeLinkedListQuest",
+                "number",
+                [],
+                []
+            );
+
+            if (cppComplete !== 1) {
+                this.questionText.setText(
+                    "C++ QUEST UPDATE FAILED\n\n" +
+                    "The C++ module did not confirm a new completion. Check the browser console."
+                );
+                this.answerSubmitted = false;
+                return;
+            }
+        } catch (error) {
+            console.error("Failed to complete quest in C++:", error);
+            this.questionText.setText(
+                "C++ QUEST UPDATE FAILED\n\n" +
+                "Check the browser console and confirm the C++ JavaScript and WASM files are available."
+            );
+            this.answerSubmitted = false;
+            return;
+        }
+
+        // Only award XP after both C and C++ succeed.
         this.questCompleted = true;
-        this.dsaXP += 10;
+        await this.awardXP(10);
 
         // Display feedback.
         this.questionText.setText(
             "QUEST COMPLETED!\n\n" +
             "The last node has no next node.\n" +
             "Its next pointer is NULL.\n\n" +
-            "+10 DSA XP\n\n" +
-            "Total DSA XP: " + this.dsaXP
+            "+10 XP\n\n" +
+            "Total XP: " + this.dsaXP
         );
 
         // Disable all answer options.
@@ -366,7 +472,7 @@ class GameScene extends Phaser.Scene {
         this.updateQuestHUD();
 
         console.log("Quest completed!");
-        console.log("Total DSA XP:", this.dsaXP);
+        console.log("Total XP:", this.dsaXP);
     }
 
 
@@ -387,25 +493,97 @@ class GameScene extends Phaser.Scene {
 
 
     // ==========================================
+    // C++ PLAYER INTEGRATION
+    // ==========================================
+
+    async awardXP(amount) {
+        const module = await cppPlayerReady;
+        if (!module) {
+            console.error("XP reward blocked: C++ Player module is unavailable.");
+            return false;
+        }
+        try {
+            module.ccall("playerAddXP", null, ["number"], [amount]);
+            this.dsaXP += amount;
+            this.syncPlayerStats();
+            this.updateQuestHUD();
+            return true;
+        } catch (error) {
+            console.error("Could not award XP through the C++ Player system:", error);
+            return false;
+        }
+    }
+
+    syncPlayerStats() {
+        if (!cppPlayerModule) return;
+        try {
+            this.playerEnergy = cppPlayerModule.ccall("playerGetEnergy", "number", [], []);
+            this.playerLevel = cppPlayerModule.ccall("playerGetLevel", "number", [], []);
+            this.playerTotalXP = cppPlayerModule.ccall("playerGetXP", "number", [], []);
+            if (this.playerStatsText) {
+                this.playerStatsText.setText(
+                    "LEVEL " + this.playerLevel + "  |  XP " + this.playerTotalXP + "\nENERGY " + this.playerEnergy + "/100  |  Hold SHIFT to sprint"
+                );
+            }
+        } catch (error) {
+            console.error("Could not read C++ Player stats:", error);
+        }
+    }
+
+    tickPlayerEnergy(now, sprinting, wantsToSprint) {
+        if (!cppPlayerModule || now < this.nextEnergyTick) return;
+
+        // Drain while sprinting. Recover only after SHIFT is released; otherwise
+        // a player at zero energy could repeatedly regain 1 point and stutter-sprint.
+        this.nextEnergyTick = now + (sprinting ? 100 : 125);
+        try {
+            if (sprinting) {
+                const allowed = cppPlayerModule.ccall("playerUseEnergy", "number", ["number"], [1]);
+                this.playerEnergy = cppPlayerModule.ccall("playerGetEnergy", "number", [], []);
+                if (!allowed) this.playerEnergy = 0;
+            } else if (!wantsToSprint) {
+                cppPlayerModule.ccall("playerRestoreEnergy", null, ["number"], [1]);
+                this.playerEnergy = cppPlayerModule.ccall("playerGetEnergy", "number", [], []);
+            } else {
+                // SHIFT is still held but energy is empty: stay at normal speed
+                // and do not regenerate until the player releases the key.
+                this.playerEnergy = cppPlayerModule.ccall("playerGetEnergy", "number", [], []);
+            }
+            this.syncPlayerStats();
+        } catch (error) {
+            console.error("C++ Player energy update failed:", error);
+        }
+    }
+
+    // ==========================================
     // QUEST HUD
     // ==========================================
 
     updateQuestHUD() {
 
         if (this.questStatusText) {
-
             this.questStatusText.setText(
-                this.questCompleted
-                    ? "Quest: Linked List — COMPLETED"
-                    : "Quest: Linked List — ACTIVE"
+                !this.coffeeQuestCompleted
+                    ? "Main Quest: Coffee Crisis — " + (this.coffeeQuestAccepted ? "ACTIVE" : "START HERE")
+                    : this.questCompleted
+                        ? "Quest: Linked List — COMPLETED"
+                        : "Quest: Linked List — ACTIVE"
             );
-
+        }
+        if (this.coffeeQuestStatusText) {
+            this.coffeeQuestStatusText.setText(
+                this.coffeeQuestCompleted
+                    ? "Coffee Crisis: COMPLETED"
+                    : this.coffeeQuestAccepted
+                        ? "Coffee Crisis: Repair the vending machine"
+                        : "Coffee Crisis: Talk to your friend"
+            );
         }
 
         if (this.xpText) {
 
             this.xpText.setText(
-                "DSA XP: " + this.dsaXP
+                "Total XP: " + this.dsaXP
             );
 
         }
@@ -717,7 +895,17 @@ class GameScene extends Phaser.Scene {
     }
 
     async interactWithMentor() {
-        // Keep the original linked-list challenge as the first mentor activity.
+        // The opening story quest teaches interaction and code repair before DSA training.
+        if (!this.coffeeQuestCompleted) {
+            this.showQuestDialogue(
+                "MENTOR",
+                "Before we begin DSA training, help your friend repair the vending machine. It introduces the interaction and coding mechanics used throughout Cipher Valley.",
+                [{ label: "I'll do it", callback: () => {} }]
+            );
+            return;
+        }
+
+        // The linked-list challenge follows the mandatory opening quest.
         if (!this.questCompleted) {
             this.showDSAChallenge();
             return;
@@ -756,12 +944,30 @@ class GameScene extends Phaser.Scene {
             );
 
             if (quantity > 0) {
+                const playerModule = await cppPlayerReady;
+                if (!playerModule) {
+                    this.showQuestDialogue(
+                        "C++ PLAYER MODULE UNAVAILABLE",
+                        "Your Notebook is in the inventory, but the quest has not been completed and no XP was awarded. Check the browser Console and Player module setup.",
+                        [{ label: "Close", callback: () => {} }]
+                    );
+                    return;
+                }
                 this.notebookQuestCompleted = true;
-                this.dsaXP += 20;
+                const xpAwarded = await this.awardXP(20);
+                if (!xpAwarded) {
+                    this.notebookQuestCompleted = false;
+                    this.showQuestDialogue(
+                        "XP REWARD FAILED",
+                        "The Player module could not record XP. The quest can be retried after checking the Console.",
+                        [{ label: "Close", callback: () => {} }]
+                    );
+                    return;
+                }
                 this.updateQuestHUD();
                 this.showQuestDialogue(
                     "QUEST COMPLETED!",
-                    "Notebook found in the C hash-table inventory. The mentor accepts it.\n\n+20 DSA XP\nTotal DSA XP: " + this.dsaXP,
+                    "Notebook found in the C hash-table inventory. The mentor accepts it.\n\n+20 XP\nTotal XP: " + this.dsaXP,
                     [{ label: "Continue", callback: () => {} }]
                 );
             } else {
@@ -828,6 +1034,267 @@ class GameScene extends Phaser.Scene {
         );
     }
 
+
+    // ==========================================
+    // OPENING STORY QUEST: THE COFFEE CRISIS
+    // ==========================================
+
+    interactWithFriend() {
+        if (this.coffeeQuestCompleted) {
+            this.showQuestDialogue(
+                "THANKS FOR THE SAVE!",
+                "The vending machine is working again. That coffee really helped!",
+                [{ label: "Anytime!", callback: () => {} }]
+            );
+            return;
+        }
+
+        if (this.coffeeQuestAccepted) {
+            this.showQuestDialogue(
+                "YOUR FRIEND",
+                "The vending machine is beside the hostel. Inspect its program and repair the missing condition. You can use hints if you need them.",
+                [{ label: "On my way", callback: () => {} }]
+            );
+            return;
+        }
+
+        this.showQuestDialogue(
+            "THE COFFEE CRISIS",
+            "Hey! I could really use a coffee, but the campus vending machine has crashed. It says its dispensing program has a bug. Can you investigate and get it working again?",
+            [
+                {
+                    label: "Accept Quest",
+                    callback: () => {
+                        this.coffeeQuestAccepted = true;
+                        this.updateQuestHUD();
+                        this.showQuestDialogue(
+                            "QUEST ACCEPTED: COFFEE CRISIS",
+                            "Find the vending machine near the hostel. Inspect the code and replace the missing part. No multiple-choice answers—try the code yourself!",
+                            [{ label: "Let's fix it", callback: () => {} }]
+                        );
+                    }
+                },
+                { label: "I'll be back", callback: () => {} }
+            ]
+        );
+    }
+
+    interactWithVendingMachine() {
+        if (this.coffeeQuestCompleted) {
+            this.showQuestDialogue(
+                "CAMPUS VENDING MACHINE",
+                "STATUS: ONLINE\nCoffee is ready to dispense. Nice debugging!",
+                [{ label: "Close", callback: () => {} }]
+            );
+            return;
+        }
+
+        if (!this.coffeeQuestAccepted) {
+            this.showQuestDialogue(
+                "VENDING MACHINE — ERROR",
+                "DISPENSER OFFLINE. A student nearby mentioned needing help. Talk to your friend first to learn what happened.",
+                [{ label: "Close", callback: () => {} }]
+            );
+            return;
+        }
+
+        this.showCoffeeCodingChallenge();
+    }
+
+    showCoffeeCodingChallenge() {
+        if (this.coffeeChallengeOpen || this.coffeeQuestCompleted) return;
+        this.coffeeChallengeOpen = true;
+        this.player.body.setVelocity(0);
+
+        // Phaser captures movement/action keys to prevent browser defaults.
+        // Release them while the HTML code input is active so letters can be typed.
+        this.coffeeReleasedKeyCapture = [
+            Phaser.Input.Keyboard.KeyCodes.W,
+            Phaser.Input.Keyboard.KeyCodes.A,
+            Phaser.Input.Keyboard.KeyCodes.S,
+            Phaser.Input.Keyboard.KeyCodes.D,
+            Phaser.Input.Keyboard.KeyCodes.E,
+            Phaser.Input.Keyboard.KeyCodes.I
+        ];
+        this.input.keyboard.removeCapture(this.coffeeReleasedKeyCapture);
+        this.interactionBox.setVisible(false);
+        this.interactionText.setVisible(false);
+        this.coffeeOverlayElements = [];
+
+        const add = (obj) => {
+            obj.setDepth(80);
+            this.coffeeOverlayElements.push(obj);
+            return obj;
+        };
+
+        add(this.add.rectangle(400, 300, 800, 600, 0x07111b, 0.97));
+        add(this.add.rectangle(400, 300, 700, 520, 0x142733, 1).setStrokeStyle(3, 0x57cc99));
+        add(this.add.text(400, 55, "THE COFFEE CRISIS", {
+            fontSize: "30px", color: "#ffffff", fontStyle: "bold"
+        }).setOrigin(0.5));
+        add(this.add.text(400, 95, "VENDING MACHINE DIAGNOSTICS  •  CODE REPAIR", {
+            fontSize: "15px", color: "#9fe8c5"
+        }).setOrigin(0.5));
+        add(this.add.text(90, 130,
+            "The machine must only dispense coffee when the requested cups are positive and do not exceed stock.\nReplace ___ with the correct variable, then run the test.", {
+                fontSize: "17px", color: "#e8f1f2", lineSpacing: 7,
+                wordWrap: { width: 620 }
+            }));
+
+        const code = [
+            "int dispenseCoffee(int stock, int requested) {",
+            "    if (requested > 0 && requested <= ___) {",
+            "        return requested;",
+            "    }",
+            "    return 0;",
+            "}"
+        ].join("\n");
+        this.coffeeCodeText = add(this.add.text(95, 220, code, {
+            fontSize: "18px", color: "#d7f9e9", backgroundColor: "#09151d",
+            padding: { x: 16, y: 14 }, lineSpacing: 6,
+            wordWrap: { width: 600 }
+        }));
+
+        add(this.add.text(400, 370,
+            "Type the missing variable below. Hint: compare the request with the machine's available amount.", {
+                fontSize: "15px", color: "#c5d6de", align: "center",
+                wordWrap: { width: 600 }
+            }).setOrigin(0.5));
+
+        // Use a small HTML input so the player can genuinely type code without adding a library.
+        const canvas = this.game.canvas;
+        const rect = canvas.getBoundingClientRect();
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = "Enter missing variable...";
+        input.setAttribute("aria-label", "Missing code variable");
+        Object.assign(input.style, {
+            position: "fixed", left: `${rect.left + rect.width * 0.31}px`,
+            top: `${rect.top + rect.height * 0.66}px`, width: `${rect.width * 0.38}px`,
+            padding: "12px", fontSize: "18px", boxSizing: "border-box",
+            border: "2px solid #57cc99", borderRadius: "6px", zIndex: "9999",
+            background: "#f5fff9", color: "#10251c", textAlign: "center"
+        });
+        document.body.appendChild(input);
+        this.coffeeCodeInput = input;
+
+        const status = add(this.add.text(400, 440, "", {
+            fontSize: "16px", color: "#ffe08a", align: "center",
+            wordWrap: { width: 620 }
+        }).setOrigin(0.5));
+        this.coffeeCodeStatus = status;
+
+        const makeButton = (x, y, label, callback, width=150) => {
+            const b = add(this.add.text(x, y, label, {
+                fontSize: "16px", color: "#ffffff", backgroundColor: "#285943",
+                padding: { x: 12, y: 10 }, fixedWidth: width, align: "center"
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+            b.on("pointerover", () => b.setStyle({ backgroundColor: "#397957" }));
+            b.on("pointerout", () => b.setStyle({ backgroundColor: "#285943" }));
+            b.on("pointerdown", callback);
+            return b;
+        };
+
+        makeButton(240, 505, "RUN CODE", () => this.runCoffeeCode());
+        makeButton(400, 505, "HINT", () => this.showCoffeeHint());
+        makeButton(560, 505, "EXIT", () => this.closeCoffeeCodingChallenge());
+        input.focus();
+        input.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") this.runCoffeeCode();
+            if (event.key === "Escape") this.closeCoffeeCodingChallenge();
+        });
+    }
+
+    showCoffeeHint() {
+        const hints = [
+            "Hint 1: The condition checks requested against a second variable.",
+            "Hint 2: The machine has a variable representing the number of cups available.",
+            "Hint 3: Use the variable named stock. It is one of the function parameters."
+        ];
+        this.coffeeCodeStatus.setText(hints[Math.min(this.coffeeHintLevel, hints.length - 1)]);
+        this.coffeeHintLevel = Math.min(this.coffeeHintLevel + 1, hints.length - 1);
+    }
+
+    async runCoffeeCode() {
+        if (!this.coffeeCodeInput || !this.coffeeCodeStatus) return;
+        this.coffeeAttempts++;
+        const answer = this.coffeeCodeInput.value.trim().replace(/;$/, "");
+        if (answer !== "stock") {
+            this.coffeeCodeStatus.setText(
+                "TEST FAILED: The condition still can't compare the request with available stock. Review the hint and try again."
+            );
+            return;
+        }
+
+        this.coffeeCodeStatus.setText("TEST PASSED: The dispenser logic is valid. Restarting machine...");
+        const playerModule = await cppPlayerReady;
+        if (!playerModule) {
+            this.coffeeCodeStatus.setText("The C++ Player module is unavailable, so the quest reward was not issued. Check the Console and module script path.");
+            return;
+        }
+        const module = await hashTableReady;
+        if (!module) {
+            this.coffeeCodeStatus.setText("Code passed, but the C inventory module is unavailable. No reward was issued.");
+            return;
+        }
+
+        try {
+            const existing = module.ccall("searchItemQuantity", "number", ["string"], ["Coffee"]);
+            if (existing <= 0) {
+                module.ccall("insertItem", null, ["string", "number", "string"], [
+                    "Coffee", 1, "Fresh coffee collected after repairing the campus vending machine."
+                ]);
+            }
+            const xpAwarded = await this.awardXP(15);
+            if (!xpAwarded) {
+                this.coffeeCodeStatus.setText("Coffee was added, but the C++ Player could not record XP. Check the Console before retrying.");
+                return;
+            }
+            this.coffeeQuestCompleted = true;
+            if (this.vendingStatus) {
+                this.vendingStatus.setText("ONLINE").setColor("#7dffb3");
+            }
+            this.updateQuestHUD();
+            this.coffeeCodeStatus.setText("SUCCESS! Coffee dispensed. +15 XP. Coffee was added to the C hash-table inventory.");
+            console.log("Coffee Crisis completed. Attempts:", this.coffeeAttempts, "Hints used:", this.coffeeHintLevel);
+            this.time.delayedCall(1600, () => {
+                if (this.coffeeChallengeOpen) {
+                    this.closeCoffeeCodingChallenge();
+                    this.showQuestDialogue(
+                        "QUEST COMPLETED: COFFEE CRISIS",
+                        "You repaired the vending machine by fixing its stock condition. Your friend gets coffee, you earned 15 XP, and Coffee is now stored in the C hash-table inventory. Next: visit the mentor to begin the linked-list quest.",
+                        [{ label: "Let's go", callback: () => {} }]
+                    );
+                }
+            });
+        } catch (error) {
+            console.error("Coffee reward/inventory update failed:", error);
+            this.coffeeCodeStatus.setText("The code passed, but the inventory update failed. Check the browser console and retry.");
+        }
+    }
+
+    closeCoffeeCodingChallenge() {
+        this.coffeeChallengeOpen = false;
+
+        // Restore normal Phaser key capture after leaving the code input.
+        if (this.coffeeReleasedKeyCapture && this.input.keyboard) {
+            this.input.keyboard.addCapture(this.coffeeReleasedKeyCapture);
+            this.coffeeReleasedKeyCapture = null;
+        }
+        if (this.coffeeCodeInput) {
+            this.coffeeCodeInput.remove();
+            this.coffeeCodeInput = null;
+        }
+        if (this.coffeeOverlayElements) {
+            this.coffeeOverlayElements.forEach(obj => obj.destroy());
+            this.coffeeOverlayElements = [];
+        }
+        this.coffeeCodeText = null;
+        this.coffeeCodeStatus = null;
+        this.interactionBox.setVisible(false);
+        this.interactionText.setVisible(false);
+        this.updateQuestHUD();
+    }
 
     // ==========================================
     // PRELOAD
@@ -934,6 +1401,24 @@ class GameScene extends Phaser.Scene {
             }
         );
 
+        // FRIEND NPC — introduces the mandatory opening quest.
+        this.friend = this.add.rectangle(330, 300, 38, 38, 0xd17ce8);
+        this.add.text(300, 325, "FRIEND", {
+            fontSize: "14px", color: "#ffffff"
+        });
+
+        // VENDING MACHINE — major interactive object with a real code-repair challenge.
+        this.vendingMachine = this.add.rectangle(700, 390, 58, 78, 0x273746)
+            .setStrokeStyle(3, 0x57cc99);
+        this.add.rectangle(700, 377, 38, 28, 0x5dade2);
+        this.add.rectangle(700, 410, 38, 20, 0x17202a);
+        this.add.text(665, 440, "VENDING", {
+            fontSize: "14px", color: "#ffffff", fontStyle: "bold"
+        });
+        this.vendingStatus = this.add.text(660, 455, "ERROR", {
+            fontSize: "12px", color: "#ff7777", fontStyle: "bold"
+        });
+
         // LAB PHYSICS
         this.physics.add.existing(this.lab, true);
 
@@ -943,19 +1428,24 @@ class GameScene extends Phaser.Scene {
         // NPC PHYSICS
         this.physics.add.existing(this.npc, true);
         this.physics.add.existing(this.shopkeeper, true);
+        this.physics.add.existing(this.friend, true);
+        this.physics.add.existing(this.vendingMachine, true);
 
         // COLLISIONS
         this.physics.add.collider(this.player, this.lab);
         this.physics.add.collider(this.player, this.hostel);
         this.physics.add.collider(this.player, this.npc);
         this.physics.add.collider(this.player, this.shopkeeper);
+        this.physics.add.collider(this.player, this.friend);
+        this.physics.add.collider(this.player, this.vendingMachine);
 
         // KEYBOARD CONTROLS
         this.keys = this.input.keyboard.addKeys({
             W: Phaser.Input.Keyboard.KeyCodes.W,
             A: Phaser.Input.Keyboard.KeyCodes.A,
             S: Phaser.Input.Keyboard.KeyCodes.S,
-            D: Phaser.Input.Keyboard.KeyCodes.D
+            D: Phaser.Input.Keyboard.KeyCodes.D,
+            SHIFT: Phaser.Input.Keyboard.KeyCodes.SHIFT
         });
 
         // INTERACTION SETTINGS
@@ -1012,7 +1502,7 @@ class GameScene extends Phaser.Scene {
         // XP HUD
         this.xpText = this.add.text(
             15, 55,
-            "DSA XP: 0",
+            "Total XP: 0",
             {
                 fontSize: "16px",
                 color: "#ffffff",
@@ -1044,6 +1534,25 @@ class GameScene extends Phaser.Scene {
         });
         this.inventoryHintText.setDepth(5);
 
+        this.coffeeQuestStatusText = this.add.text(15, 175, "Coffee Crisis: Talk to your friend", {
+            fontSize: "14px", color: "#ffffff", backgroundColor: "#000000",
+            padding: { x: 8, y: 5 }
+        });
+        this.coffeeQuestStatusText.setDepth(5);
+
+        this.playerStatsText = this.add.text(520, 15, "Loading C++ Player...", {
+            fontSize: "14px",
+            color: "#ffffff",
+            backgroundColor: "#000000",
+            padding: { x: 8, y: 6 },
+            lineSpacing: 4
+        });
+        this.playerStatsText.setDepth(5);
+        cppPlayerReady.then((module) => {
+            if (module) this.syncPlayerStats();
+            else if (this.playerStatsText) this.playerStatsText.setText("C++ Player module unavailable");
+        });
+
         this.updateQuestHUD();
     }
 
@@ -1053,6 +1562,12 @@ class GameScene extends Phaser.Scene {
     // ==========================================
 
     update() {
+
+        // Code-repair overlay pauses normal gameplay while open.
+        if (this.coffeeChallengeOpen) {
+            this.player.body.setVelocity(0);
+            return;
+        }
 
         // Quest/shop dialogue pauses normal gameplay while open.
         if (this.questDialogueOpen) {
@@ -1094,8 +1609,17 @@ class GameScene extends Phaser.Scene {
             return;
         }
 
-        // MOVEMENT SPEED
-        const speed = 200;
+        // MOVEMENT: hold SHIFT to sprint using energy managed by C++ Player.
+        const sprintKey = this.keys.SHIFT;
+        const movingInput = this.keys.A.isDown || this.keys.D.isDown ||
+            this.keys.W.isDown || this.keys.S.isDown;
+        // Sprinting requires both SHIFT and a movement key; holding SHIFT while
+        // standing still must not drain energy.
+        const wantsToSprint = !!(sprintKey && sprintKey.isDown && movingInput);
+        const hasEnergy = this.playerEnergy > 0;
+        const sprinting = wantsToSprint && hasEnergy && !!cppPlayerModule;
+        const speed = sprinting ? 300 : 200;
+        this.tickPlayerEnergy(this.time.now, sprinting, wantsToSprint);
 
         // RESET VELOCITY
         this.player.body.setVelocity(0);
@@ -1123,48 +1647,46 @@ class GameScene extends Phaser.Scene {
         // NORMALIZE DIAGONAL MOVEMENT
         this.player.body.velocity.normalize().scale(speed);
 
-        // Find the closest interactable NPC.
-        const mentorDistance = Phaser.Math.Distance.Between(
-            this.player.x, this.player.y, this.npc.x, this.npc.y
-        );
-        const shopkeeperDistance = Phaser.Math.Distance.Between(
-            this.player.x, this.player.y, this.shopkeeper.x, this.shopkeeper.y
-        );
+        // Find the closest interactable character/object.
+        const targets = [
+            { type: "friend", object: this.friend },
+            { type: "vending", object: this.vendingMachine },
+            { type: "shopkeeper", object: this.shopkeeper },
+            { type: "mentor", object: this.npc }
+        ].map(target => ({
+            ...target,
+            distance: Phaser.Math.Distance.Between(
+                this.player.x, this.player.y, target.object.x, target.object.y
+            )
+        })).filter(target => target.distance <= this.interactionDistance)
+          .sort((a, b) => a.distance - b.distance);
 
-        const nearShopkeeper =
-            shopkeeperDistance <= this.interactionDistance &&
-            shopkeeperDistance < mentorDistance;
-        const nearMentor =
-            mentorDistance <= this.interactionDistance &&
-            !nearShopkeeper;
+        const nearestTarget = targets[0] || null;
 
-        // INTERACTION UI
-        if (nearMentor || nearShopkeeper) {
+        if (nearestTarget) {
             this.interactionBox.setVisible(true);
             this.interactionText.setVisible(true);
-
-            if (nearShopkeeper) {
-                this.interactionText.setText("Press E to visit campus shop");
-            } else if (!this.questCompleted) {
-                this.interactionText.setText("Press E to interact with mentor");
-            } else if (this.notebookQuestCompleted) {
-                this.interactionText.setText("Press E to talk to mentor");
-            } else if (!this.notebookQuestAccepted) {
-                this.interactionText.setText("Press E to talk to mentor");
-            } else {
-                this.interactionText.setText("Press E to deliver Notebook");
-            }
+            const prompts = {
+                friend: this.coffeeQuestCompleted ? "Press E to talk to your friend" : "Press E to talk to your friend",
+                vending: this.coffeeQuestCompleted ? "Press E to use vending machine" : "Press E to inspect vending machine",
+                shopkeeper: "Press E to visit campus shop",
+                mentor: this.coffeeQuestCompleted
+                    ? (!this.questCompleted ? "Press E to begin DSA training" : "Press E to talk to mentor")
+                    : "Mentor: finish the Coffee Crisis first"
+            };
+            this.interactionText.setText(prompts[nearestTarget.type]);
         } else {
             this.interactionBox.setVisible(false);
             this.interactionText.setVisible(false);
         }
 
-        // PRESS E TO INTERACT WITH THE CLOSEST NPC
-        if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-            if (nearShopkeeper) {
-                this.openCampusShop();
-            } else if (nearMentor) {
-                this.interactWithMentor();
+        // PRESS E TO INTERACT WITH THE CLOSEST NPC OR OBJECT
+        if (Phaser.Input.Keyboard.JustDown(this.interactKey) && nearestTarget) {
+            switch (nearestTarget.type) {
+                case "friend": this.interactWithFriend(); break;
+                case "vending": this.interactWithVendingMachine(); break;
+                case "shopkeeper": this.openCampusShop(); break;
+                case "mentor": this.interactWithMentor(); break;
             }
         }
 
