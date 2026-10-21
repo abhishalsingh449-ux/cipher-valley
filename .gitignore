@@ -66,4 +66,7 @@ vcpkg_installed/
 
 # test output & cache
 Testing/
-.cache/
+.cache/  
+
+# Ignore local Emscripten SDK
+/ciper valley/emsdk/
