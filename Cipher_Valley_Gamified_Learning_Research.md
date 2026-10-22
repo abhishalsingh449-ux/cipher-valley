@@ -2,7 +2,7 @@ Gamified Learning: Research and Suggested Improvements for Cipher Valley
 
 Team T334 “Avengers” · DSCPP-T334 · Phase-II Project Progress
 
-Task: research gamified learning approaches and suggest improvements to learning activities
+Task: Research gamified learning approaches and suggest improvements to learning activities
 
 Prepared by Bhavishya Bhardwaj (Team Member 3) 
 
@@ -32,7 +32,7 @@ Code puzzles help beginners. Parsons problems, where you put mixed-up code block
 
 Games built around a data structure look promising. DS-Hacker is an adventure game built around a binary search tree (Rojas-Salazar et al., 2020). Muse teaches arrays and linked lists; in a small test of 27 students the game group scored 81.5% against 72%.
 
-(Many of these studies are small or short, so treat them as guidance rather than proof.)
+P.S. (Many of these studies are small or short, so treat them as guidance rather than proof.)
 
 
 ## 2. Where Cipher Valley stands
@@ -51,7 +51,7 @@ Item lockers = hash table. Items go into numbered lockers using a simple hash. I
 
 Stack and queue (ideas): a cafeteria line for a queue, a pile of lab manuals for a stack.
 
-Abstract ideas are easier to learn when the player can see them.
+(Abstract ideas are easier to learn when the player can see them.)
 
 
 ### 2. Use a four-step loop at the lab
@@ -69,7 +69,7 @@ Your own roadblocks (pointer mistakes, hash collisions) make ready-made “Fix�
 
 ### 3. Give instant feedback and hints
 
-After each attempt, say what went wrong and why. Offer three hints: a reminder, then the line to look at, then a worked example, with no penalty for using them. Feedback that builds a sense of progress supports motivation, while competition and controlling rewards can reduce it (arXiv:2203.16175). Start with simple answer-checking in JavaScript.
+After each attempt, say what went wrong and why. Offer three hints: a reminder, then the line to look at, then a worked example, with no penalty for using them. Feedback that builds a sense of progress supports motivation, while competition and controlling rewards can reduce it. Start with simple answer-checking in JavaScript.
 
 
 ### 4. Progress by mastery
@@ -86,7 +86,7 @@ Story: for example, a mysterious “Cipher” has scrambled the campus systems a
 
 ### 6. Connect the game to the C code
 
-This also answers Challenge 5 in your report. Two options:
+Two options:
 
 Option A (try first): compile the C modules to WebAssembly with Emscripten and call them from JavaScript with ccall or cwrap (MDN Web Docs).
 
@@ -108,7 +108,6 @@ Give a short quiz (5–8 questions) before and after each module.
 
 Note attempts, hints used and time taken, plus a few questions on enjoyment and difficulty.
 
-With a group this small, the results are only indicative.
 
 
 ## References
