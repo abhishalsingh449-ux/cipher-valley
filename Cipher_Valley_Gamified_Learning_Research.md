@@ -11,28 +11,28 @@ Prepared by Bhavishya Bhardwaj (Team Member 3)
 
 Gamification helps learning on average, but only when it is designed well.
 
-What works: a story, visible progress, quick feedback, teamwork and easy practice formats.
+**What works:** a story, visible progress, quick feedback, teamwork and easy practice formats.
 
-What backfires: points, badges and public leaderboards added on top of an ordinary activity.
+**What backfires:** points, badges and public leaderboards added on top of an ordinary activity.
 
-Our best opportunity: make the data structures the game itself. The quest log becomes a linked list and the item lockers become a hash table.
+**Our best opportunity:** make the data structures the game itself. The quest log becomes a linked list and the item lockers become a hash table.
 
 Six suggestions follow, then a simple roadmap.
 
 
 ## 1. What the research says
 
-It helps on average. Three recent meta-analyses found overall gains between g ≈ 0.46 and 0.82 (g is an effect size: 0.2 is small, 0.5 medium, 0.8 large) (Huang, 2020; Bai, 2020; Li, 2023). Gains in knowledge are more reliable than gains in motivation or behaviour (Sailer & Homner, 2020).
+**It helps on average:** Three recent meta-analyses found overall gains between g ≈ 0.46 and 0.82 (g is an effect size: 0.2 is small, 0.5 medium, 0.8 large) (Huang, 2020; Bai, 2020; Li, 2023). Gains in knowledge are more reliable than gains in motivation or behaviour (Sailer & Homner, 2020).
 
-Design matters. A story or game world, and a mix of teamwork and competition, worked best (Sailer & Homner, 2020). In programming courses, results depend on which elements are used and on whether learners can shape their own path (Ishaq, 2024).
+**Design matters:** A story or game world, and a mix of teamwork and competition, worked best (Sailer & Homner, 2020). In programming courses, results depend on which elements are used and on whether learners can shape their own path (Ishaq, 2024).
 
-Leaderboards and badges can backfire. In a 16-week course, the version with a leaderboard and badges left students less motivated, with lower exam scores, than the same course without them (Hanus & Fox, 2015).
+**Leaderboards and badges can backfire:** In a 16-week course, the version with a leaderboard and badges left students less motivated, with lower exam scores, than the same course without them (Hanus & Fox, 2015).
 
-Code puzzles help beginners. Parsons problems, where you put mixed-up code blocks in order, are solved faster than writing code from scratch with the same learning gain (Ericson, 2023).
+**Code puzzles help beginners:** Parsons problems, where you put mixed-up code blocks in order, are solved faster than writing code from scratch with the same learning gain (Ericson, 2023).
 
-Games built around a data structure look promising. DS-Hacker is an adventure game built around a binary search tree (Rojas-Salazar et al., 2020). Muse teaches arrays and linked lists; in a small test of 27 students the game group scored 81.5% against 72%.
+**Games built around a data structure look promising:** DS-Hacker is an adventure game built around a binary search tree (Rojas-Salazar et al., 2020). Muse teaches arrays and linked lists; in a small test of 27 students the game group scored 81.5% against 72%.
 
-P.S. (Many of these studies are small or short, so treat them as guidance rather than proof.)
+**P.S.** (Many of these studies are small or short, so treat them as guidance rather than proof.)
 
 
 ## 2. Where Cipher Valley stands
@@ -45,24 +45,24 @@ The Phase-II report shows a Phaser.js campus with movement, collision and an E-k
 
 ### 1. Make the data structures the game itself
 
-Quest Board = linked list. Quests appear as connected nodes. Accepting a quest adds a node and completing it removes one. This reuses your C quest manager.
+**Quest Board = linked list:** Quests appear as connected nodes. Accepting a quest adds a node and completing it removes one. This reuses your C quest manager.
 
-Item lockers = hash table. Items go into numbered lockers using a simple hash. If two items collide, the game shows linear probing moving one to the next free locker. This reuses your hash table.
+**Item lockers = hash table.** Items go into numbered lockers using a simple hash. If two items collide, the game shows linear probing moving one to the next free locker. This reuses your hash table.
 
-Stack and queue (ideas): a cafeteria line for a queue, a pile of lab manuals for a stack.
+**Stack and queue (ideas):** a cafeteria line for a queue, a pile of lab manuals for a stack.
 
 (Abstract ideas are easier to learn when the player can see them.)
 
 
 ### 2. Use a four-step loop at the lab
 
-Learn: a short worked example.
+**Learn:** a short worked example.
 
-Arrange: put mixed-up code blocks in order.
+**Arrange:** put mixed-up code blocks in order.
 
-Fix: find the bug in a short C snippet.
+**Fix:** find the bug in a short C snippet.
 
-Write: fill in or write a small function.
+**Write:** fill in or write a small function.
 
 Your own roadblocks (pointer mistakes, hash collisions) make ready-made “Fix” puzzles. Let experienced players skip ahead.
 
@@ -79,18 +79,18 @@ Give each concept three stages: Explore, Practise, Master. Unlock the next area 
 
 ### 5. Reward progress and add a story
 
-Rewards: a progress map, mastery badges (“List Keeper”, “Collision Cracker”) and story unlocks. Avoid points for every click and avoid public leaderboards. For comparison, use team goals.
+**Rewards:** a progress map, mastery badges (“List Keeper”, “Collision Cracker”) and story unlocks. Avoid points for every click and avoid public leaderboards. For comparison, use team goals.
 
-Story: for example, a mysterious “Cipher” has scrambled the campus systems and each solved concept restores a building. Keep dialogue short and skippable.
+**Story:** for example, a mysterious “Cipher” has scrambled the campus systems and each solved concept restores a building. Keep dialogue short and skippable.
 
 
 ### 6. Connect the game to the C code
 
 Two options:
 
-Option A (try first): compile the C modules to WebAssembly with Emscripten and call them from JavaScript with ccall or cwrap (MDN Web Docs).
+**Option A (try first):** compile the C modules to WebAssembly with Emscripten and call them from JavaScript with ccall or cwrap (MDN Web Docs).
 
-Option B: rebuild the structures in JavaScript for the visuals and keep the C code as the reference.
+**Option B:** rebuild the structures in JavaScript for the visuals and keep the C code as the reference.
 
 Both run your own code. Letting players write and compile their own C in the game needs a browser compiler or a server, so for now use puzzles the game can check (arrange, fix, fill in).
 
@@ -102,11 +102,11 @@ Suggested first step: build one complete loop for the linked list (learn, arrang
 
 ## 5. How to test it
 
-Try it with 8–15 classmates, in at least two sessions on different days.
+-Try it with 8–15 classmates, in at least two sessions on different days.
 
-Give a short quiz (5–8 questions) before and after each module.
+-Give a short quiz (5–8 questions) before and after each module.
 
-Note attempts, hints used and time taken, plus a few questions on enjoyment and difficulty.
+-Note attempts, hints used and time taken, plus a few questions on enjoyment and difficulty.
 
 
 
