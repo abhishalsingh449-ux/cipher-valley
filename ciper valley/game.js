@@ -99,6 +99,25 @@ const hashTableReady = createHash_table()
         return null;
     });
 
+// ==========================================
+// C TREE DSA MODULE (OPTIONAL UNTIL BUILT)
+// ==========================================
+let treeModule = null;
+const treeReady = Promise.resolve().then(() => {
+    if (typeof createTreeModule !== "function") {
+        console.warn("C Tree module not loaded yet; Tree Training uses the built-in fallback. Build tree_module.js/.wasm to activate the C implementation.");
+        return null;
+    }
+    return createTreeModule();
+}).then((Module) => {
+    treeModule = Module;
+    console.log("C Binary Search Tree module connected!");
+    return Module;
+}).catch((error) => {
+    console.error("C Tree module failed to load; using fallback:", error);
+    return null;
+});
+
 class GameScene extends Phaser.Scene {
 
     constructor() {
@@ -130,6 +149,9 @@ class GameScene extends Phaser.Scene {
         this.notebookQuestCompleted = false;
         this.questDialogueOpen = false;
         this.questDialogueObjects = [];
+        this.treeChallengeOpen = false;
+        this.treeChallengeObjects = [];
+        this.treeChallengeCompleted = false;
     }
 
 
@@ -1314,7 +1336,7 @@ class GameScene extends Phaser.Scene {
     create() {
 
         // CAMPUS BACKGROUND
-        this.add.rectangle(
+        this.campusBackground = this.add.rectangle(
             400, 300, 800, 600,
             0x3a7d44
         );
@@ -1458,6 +1480,10 @@ class GameScene extends Phaser.Scene {
         // Open the C hash-table inventory at any time with I.
         this.inventoryKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.I);
 
+        // Open the Binary Search Tree DSA challenge at any time with T.
+        this.treeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
+        this.treeExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+
         // INTERACTION BACKGROUND
         this.interactionBox = this.add.rectangle(
             400, 520, 300, 55,
@@ -1534,6 +1560,24 @@ class GameScene extends Phaser.Scene {
         });
         this.inventoryHintText.setDepth(5);
 
+        this.treeHintText = this.add.text(15, 215, "Press T: Tree DSA Training", {
+            fontSize: "14px", color: "#7CFFB2", backgroundColor: "#10251d",
+            padding: { x: 8, y: 5 }
+        });
+        this.treeHintText.setDepth(5);
+
+        // Continuous campus clock: one game minute per two real seconds.
+        this.gameMinutes = 6 * 60; // Wake-up time: 6:00 AM
+        this.gameDay = 1;
+        this.gameClockText = this.add.text(520, 80, "DAY 1 | 06:00 AM", {
+            fontSize: "16px", color: "#ffffff", backgroundColor: "#263238",
+            padding: { x: 8, y: 6 }
+        });
+        this.gameClockText.setDepth(5);
+        this.gameMinuteTimer = this.time.addEvent({
+            delay: 2000, callback: this.advanceGameMinute, callbackScope: this, loop: true
+        });
+
         this.coffeeQuestStatusText = this.add.text(15, 175, "Coffee Crisis: Talk to your friend", {
             fontSize: "14px", color: "#ffffff", backgroundColor: "#000000",
             padding: { x: 8, y: 5 }
@@ -1558,10 +1602,123 @@ class GameScene extends Phaser.Scene {
 
 
     // ==========================================
+    // CONTINUOUS GAME CLOCK — 1 MINUTE / 2 REAL SECONDS
+    // ==========================================
+    advanceGameMinute() {
+        this.gameMinutes++;
+        if (this.gameMinutes >= 1440) {
+            this.gameMinutes = 0;
+            this.gameDay++;
+        }
+        const hour = Math.floor(this.gameMinutes / 60);
+        const minute = this.gameMinutes % 60;
+        const period = hour >= 12 ? "PM" : "AM";
+        const hour12 = hour % 12 || 12;
+        this.gameClockText.setText(`DAY ${this.gameDay} | ${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`);
+        let ground = 0x3a7d44;
+        if (hour >= 12 && hour < 17) ground = 0x4d8b49;
+        else if (hour >= 17 && hour < 20) ground = 0x6b6847;
+        else if (hour >= 20 || hour < 6) ground = 0x202c48;
+        if (this.campusBackground) this.campusBackground.setFillStyle(ground);
+    }
+
+    // ==========================================
+    // BINARY SEARCH TREE TRAINING (PRESS T)
+    // ==========================================
+    async showTreeChallenge() {
+        if (this.treeChallengeOpen || this.dsaOpen || this.inventoryOpen ||
+            this.questDialogueOpen || this.coffeeChallengeOpen) return;
+        this.treeChallengeOpen = true;
+        this.player.body.setVelocity(0);
+        this.treeChallengeObjects = [];
+
+        const add = (obj) => { this.treeChallengeObjects.push(obj); return obj; };
+        add(this.add.rectangle(400, 300, 720, 520, 0x101820, 0.97).setStrokeStyle(3, 0x57cc99).setDepth(100));
+        add(this.add.text(400, 65, "TREE TRAINING — BINARY SEARCH TREE", {
+            fontSize: "24px", color: "#7CFFB2", fontStyle: "bold", align: "center"
+        }).setOrigin(0.5).setDepth(101));
+        add(this.add.text(400, 100, "Insert 40, 20, 60, 10 into a BST", {
+            fontSize: "18px", color: "#ffffff", align: "center"
+        }).setOrigin(0.5).setDepth(101));
+
+        // Build the actual C tree when its Emscripten module is available.
+        const module = await treeReady;
+        if (module) {
+            try {
+                module.ccall("treeReset", null, [], []);
+                [40, 20, 60, 10].forEach(value => module.ccall("treeInsert", null, ["number"], [value]));
+            } catch (error) { console.error("C BST initialization failed:", error); }
+        }
+
+        // Draw the teaching tree in Phaser. Values mirror the C insert sequence.
+        const line = (x1, y1, x2, y2) => add(this.add.line(0, 0, x1, y1, x2, y2, 0x7CFFB2).setLineWidth(3).setDepth(101));
+        line(400, 170, 280, 230); line(400, 170, 520, 230); line(280, 230, 220, 290);
+        const node = (x, y, label) => {
+            add(this.add.circle(x, y, 25, 0x245b49).setStrokeStyle(3, 0x7CFFB2).setDepth(102));
+            add(this.add.text(x, y, String(label), { fontSize: "18px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5).setDepth(103));
+        };
+        node(400, 170, 40); node(280, 230, 20); node(520, 230, 60); node(220, 290, 10);
+        add(this.add.text(400, 335, "Question: What is the INORDER traversal?", {
+            fontSize: "20px", color: "#ffffff", fontStyle: "bold", align: "center"
+        }).setOrigin(0.5).setDepth(101));
+
+        const options = ["40, 20, 10, 60", "10, 20, 40, 60", "20, 10, 60, 40"];
+        options.forEach((answer, index) => {
+            const y = 385 + index * 48;
+            const button = add(this.add.rectangle(400, y, 440, 38, 0x263746).setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }).setDepth(101));
+            const label = add(this.add.text(400, y, `${String.fromCharCode(65 + index)}) ${answer}`, {
+                fontSize: "17px", color: "#ffffff", align: "center"
+            }).setOrigin(0.5).setDepth(102));
+            button.on("pointerdown", () => this.answerTreeChallenge(index === 1, button, label));
+        });
+        add(this.add.text(400, 535, "Press ESC to close  •  Correct answer earns +15 XP", {
+            fontSize: "15px", color: "#b8c7d9", align: "center"
+        }).setOrigin(0.5).setDepth(101));
+    }
+
+    async answerTreeChallenge(correct, button, label) {
+        if (this.treeChallengeCompleted) return;
+        if (!correct) {
+            label.setText("Try again — BST inorder is Left, Root, Right");
+            label.setColor("#ffcc66");
+            return;
+        }
+        this.treeChallengeCompleted = true;
+        let traversal = "10, 20, 40, 60";
+        if (treeModule) {
+            try {
+                const count = treeModule.ccall("treeGetCount", "number", [], []);
+                const values = [];
+                for (let i = 0; i < count; i++) values.push(treeModule.ccall("treeGetInorderAt", "number", ["number"], [i]));
+                if (values.length) traversal = values.join(", ");
+            } catch (error) { console.error("Could not read C BST traversal:", error); }
+        }
+        label.setText("CORRECT! Inorder: " + traversal + "  |  +15 XP");
+        label.setColor("#7CFFB2");
+        button.setFillStyle(0x245b49);
+        await this.awardXP(15);
+        this.updateQuestHUD();
+        console.log("Tree Training completed. Inorder:", traversal);
+    }
+
+    closeTreeChallenge() {
+        this.treeChallengeOpen = false;
+        this.treeChallengeObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
+        this.treeChallengeObjects = [];
+    }
+
+    // ==========================================
     // UPDATE
     // ==========================================
 
     update() {
+
+        // Tree Training overlay pauses normal gameplay while open.
+        if (this.treeChallengeOpen) {
+            this.player.body.setVelocity(0);
+            if (Phaser.Input.Keyboard.JustDown(this.treeExitKey)) this.closeTreeChallenge();
+            return;
+        }
 
         // Code-repair overlay pauses normal gameplay while open.
         if (this.coffeeChallengeOpen) {
@@ -1606,6 +1763,12 @@ class GameScene extends Phaser.Scene {
 
             }
 
+            return;
+        }
+
+        // Open Tree Training using the T key.
+        if (this.treeKey && Phaser.Input.Keyboard.JustDown(this.treeKey)) {
+            this.showTreeChallenge();
             return;
         }
 

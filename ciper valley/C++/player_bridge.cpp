@@ -11,9 +11,7 @@ int playerInit(const char* name) {
 }
 
 void playerAddXP(int amount) {
-    if (activePlayer) {
-        activePlayer->addXP(amount);
-    }
+    if (activePlayer) activePlayer->addXP(amount);
 }
 
 int playerUseEnergy(int amount) {
@@ -22,9 +20,8 @@ int playerUseEnergy(int amount) {
 }
 
 void playerRestoreEnergy(int amount) {
-    if (activePlayer) {
-        activePlayer->restoreEnergyQuietly(amount);
-    }
+    // Silent recovery is important because Phaser calls this repeatedly while idle.
+    if (activePlayer) activePlayer->restoreEnergyQuietly(amount);
 }
 
 int playerGetEnergy() {
@@ -40,9 +37,7 @@ int playerGetXP() {
 }
 
 void playerDisplay() {
-    if (activePlayer) {
-        activePlayer->displayPlayer();
-    }
+    if (activePlayer) activePlayer->displayPlayer();
 }
 
 }
