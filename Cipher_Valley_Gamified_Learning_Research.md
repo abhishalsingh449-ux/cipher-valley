@@ -1,4 +1,4 @@
-Gamified Learning: Research and Suggested Improvements for Cipher Valley
+## Gamified Learning: Research and Suggested Improvements for Cipher Valley
 
 Team T334 “Avengers” · DSCPP-T334 · Phase-II Project Progress
 
