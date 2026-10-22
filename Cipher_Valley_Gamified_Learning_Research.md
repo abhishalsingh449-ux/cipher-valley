@@ -2,9 +2,9 @@ Gamified Learning: Research and Suggested Improvements for Cipher Valley
 
 Team T334 “Avengers” · DSCPP-T334 · Phase-II Project Progress
 
-Pending task 3: research gamified learning approaches and suggest improvements to learning activities
+Task: research gamified learning approaches and suggest improvements to learning activities
 
-Prepared by Bhavishya Bhardwaj (Team Member 3) · 22 October 2026
+Prepared by Bhavishya Bhardwaj (Team Member 3) 
 
 
 ## In short
@@ -22,17 +22,17 @@ Six suggestions follow, then a simple roadmap.
 
 ## 1. What the research says
 
-It helps on average. Three recent meta-analyses found overall gains between g ≈ 0.46 and 0.82 (g is an effect size: 0.2 is small, 0.5 medium, 0.8 large) (Huang et al., 2020; Bai et al., 2020; Li et al., 2023). Gains in knowledge are more reliable than gains in motivation or behaviour (Sailer & Homner, 2020).
+It helps on average. Three recent meta-analyses found overall gains between g ≈ 0.46 and 0.82 (g is an effect size: 0.2 is small, 0.5 medium, 0.8 large) (Huang, 2020; Bai, 2020; Li, 2023). Gains in knowledge are more reliable than gains in motivation or behaviour (Sailer & Homner, 2020).
 
-Design matters. A story or game world, and a mix of teamwork and competition, worked best (Sailer & Homner, 2020). In programming courses, results depend on which elements are used and on whether learners can shape their own path (Ishaq et al., 2024).
+Design matters. A story or game world, and a mix of teamwork and competition, worked best (Sailer & Homner, 2020). In programming courses, results depend on which elements are used and on whether learners can shape their own path (Ishaq, 2024).
 
 Leaderboards and badges can backfire. In a 16-week course, the version with a leaderboard and badges left students less motivated, with lower exam scores, than the same course without them (Hanus & Fox, 2015).
 
-Code puzzles help beginners. Parsons problems, where you put mixed-up code blocks in order, are solved faster than writing code from scratch with the same learning gain (Ericson et al., 2023).
+Code puzzles help beginners. Parsons problems, where you put mixed-up code blocks in order, are solved faster than writing code from scratch with the same learning gain (Ericson, 2023).
 
-Games built around a data structure look promising. DS-Hacker is an adventure game built around a binary search tree (Rojas-Salazar et al., 2020). Muse teaches arrays and linked lists; in a small test of 27 students the game group scored 81.5% against 72% (Sharma et al.).
+Games built around a data structure look promising. DS-Hacker is an adventure game built around a binary search tree (Rojas-Salazar et al., 2020). Muse teaches arrays and linked lists; in a small test of 27 students the game group scored 81.5% against 72%.
 
-Many of these studies are small or short, so treat them as guidance rather than proof.
+(Many of these studies are small or short, so treat them as guidance rather than proof.)
 
 
 ## 2. Where Cipher Valley stands
