@@ -1,55 +1,39 @@
-#ifndef NPC_H
-#define NPC_H
-
+#ifndef CIPHER_VALLEY_NPC_H
+#define CIPHER_VALLEY_NPC_H
 #include <string>
-using namespace std;
 
-
-// BASE CLASS
-class NPC
-{
+class NPC {
 protected:
-    string name;
-    string role;
-
+    std::string name;
+    std::string role;
 public:
-    NPC(string npcName, string npcRole);
-
+    NPC(std::string npcName, std::string npcRole);
     void displayNPC();
-
     virtual void interact();
-
+    virtual std::string interactionMessage() const;
+    const std::string& getName() const;
+    const std::string& getRole() const;
     virtual ~NPC();
 };
 
-
-// PROGRAMMING MENTOR
-class ProgrammingMentor : public NPC
-{
+class ProgrammingMentor : public NPC {
 public:
-    ProgrammingMentor(string npcName, string npcRole);
-
+    ProgrammingMentor(std::string npcName, std::string npcRole);
     void interact() override;
+    std::string interactionMessage() const override;
 };
 
-
-// LAB ASSISTANT
-class LabAssistant : public NPC
-{
+class LabAssistant : public NPC {
 public:
-    LabAssistant(string npcName, string npcRole);
-
+    LabAssistant(std::string npcName, std::string npcRole);
     void interact() override;
+    std::string interactionMessage() const override;
 };
 
-
-// SHOPKEEPER
-class Shopkeeper : public NPC
-{
+class Shopkeeper : public NPC {
 public:
-    Shopkeeper(string npcName, string npcRole);
-
+    Shopkeeper(std::string npcName, std::string npcRole);
     void interact() override;
+    std::string interactionMessage() const override;
 };
-
 #endif

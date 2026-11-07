@@ -1,95 +1,31 @@
+#include "npc.h"
 #include <iostream>
-#include "NPC.h"
+#include <utility>
 
-using namespace std;
+NPC::NPC(std::string npcName, std::string npcRole)
+    : name(std::move(npcName)), role(std::move(npcRole)) {}
 
-
-// ==================== NPC BASE CLASS ====================
-
-// Constructor
-NPC::NPC(string npcName, string npcRole)
-{
-    name = npcName;
-    role = npcRole;
+void NPC::displayNPC() {
+    std::cout << "\n--- NPC ---\nName: " << name << "\nRole: " << role << std::endl;
 }
 
+std::string NPC::interactionMessage() const { return "Welcome to Cipher Valley!"; }
+void NPC::interact() { std::cout << name << " says: " << interactionMessage() << std::endl; }
+const std::string& NPC::getName() const { return name; }
+const std::string& NPC::getRole() const { return role; }
+NPC::~NPC() = default;
 
-// Display NPC information
-void NPC::displayNPC()
-{
-    cout << "\n--- NPC ---" << endl;
-    cout << "Name: " << name << endl;
-    cout << "Role: " << role << endl;
-}
+ProgrammingMentor::ProgrammingMentor(std::string npcName, std::string npcRole)
+    : NPC(std::move(npcName), std::move(npcRole)) {}
+std::string ProgrammingMentor::interactionMessage() const { return "Today we are learning Linked Lists!"; }
+void ProgrammingMentor::interact() { NPC::interact(); }
 
+LabAssistant::LabAssistant(std::string npcName, std::string npcRole)
+    : NPC(std::move(npcName), std::move(npcRole)) {}
+std::string LabAssistant::interactionMessage() const { return "The Programming Lab is ready."; }
+void LabAssistant::interact() { NPC::interact(); }
 
-// Default interaction
-void NPC::interact()
-{
-    cout << name
-         << " says: Welcome to Cipher Valley!"
-         << endl;
-}
-
-
-// Destructor
-NPC::~NPC()
-{
-}
-
-
-// ==================== PROGRAMMING MENTOR ====================
-
-ProgrammingMentor::ProgrammingMentor(
-    string npcName,
-    string npcRole
-)
-    : NPC(npcName, npcRole)
-{
-}
-
-
-void ProgrammingMentor::interact()
-{
-    cout << name
-         << " says: Today we are learning Linked Lists!"
-         << endl;
-}
-
-
-// ==================== LAB ASSISTANT ====================
-
-LabAssistant::LabAssistant(
-    string npcName,
-    string npcRole
-)
-    : NPC(npcName, npcRole)
-{
-}
-
-
-void LabAssistant::interact()
-{
-    cout << name
-         << " says: The Programming Lab is ready."
-         << endl;
-}
-
-
-// ==================== SHOPKEEPER ====================
-
-Shopkeeper::Shopkeeper(
-    string npcName,
-    string npcRole
-)
-    : NPC(npcName, npcRole)
-{
-}
-
-
-void Shopkeeper::interact()
-{
-    cout << name
-         << " says: I have some useful items for you."
-         << endl;
-}
+Shopkeeper::Shopkeeper(std::string npcName, std::string npcRole)
+    : NPC(std::move(npcName), std::move(npcRole)) {}
+std::string Shopkeeper::interactionMessage() const { return "I have some useful items for you."; }
+void Shopkeeper::interact() { NPC::interact(); }

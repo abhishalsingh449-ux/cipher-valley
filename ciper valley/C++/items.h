@@ -1,22 +1,21 @@
-#ifndef ITEMS_H
-#define ITEMS_H
-
+#ifndef CIPHER_VALLEY_ITEMS_H
+#define CIPHER_VALLEY_ITEMS_H
 #include <string>
-using namespace std;
 
-class Item
-{
+class Item {
 private:
-    string name;
+    std::string name;
     int quantity;
-    string description;
-
+    std::string description;
 public:
-    Item(string itemName, int itemQuantity, string itemDescription);
-
+    Item(const std::string& itemName, int itemQuantity, const std::string& itemDescription);
     void displayItem();
     void addItem(int amount);
     void useItem();
+    void addItemQuietly(int amount);
+    bool tryUseItem();
+    const std::string& getName() const;
+    const std::string& getDescription() const;
+    int getQuantity() const;
 };
-
 #endif

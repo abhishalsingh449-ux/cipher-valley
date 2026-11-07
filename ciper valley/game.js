@@ -118,6 +118,61 @@ const treeReady = Promise.resolve().then(() => {
     return null;
 });
 
+// ==========================================
+// C STACK + C CIRCULAR QUEUE MODULES
+// ==========================================
+let stackModule = null;
+let queueModule = null;
+let worldModule = null;
+
+const stackReady = Promise.resolve().then(() => {
+    if (typeof createStackModule !== "function") {
+        console.warn("C stack module not loaded. Build stack_module.js/.wasm to enable action history.");
+        return null;
+    }
+    return createStackModule();
+}).then((Module) => {
+    stackModule = Module;
+    if (Module) console.log("C Stack module connected: action history is active.");
+    return Module;
+}).catch((error) => {
+    console.error("C Stack module failed to load; using in-game fallback:", error);
+    return null;
+});
+
+const queueReady = Promise.resolve().then(() => {
+    if (typeof createQueueModule !== "function") {
+        console.warn("C queue module not loaded. Build queue_module.js/.wasm to enable the task queue.");
+        return null;
+    }
+    return createQueueModule();
+}).then((Module) => {
+    queueModule = Module;
+    if (Module) console.log("C circular queue module connected: quest tasks are active.");
+    return Module;
+}).catch((error) => {
+    console.error("C queue module failed to load; using in-game fallback:", error);
+    return null;
+});
+
+const worldReady = Promise.resolve().then(() => {
+    if (typeof createWorldModule !== "function") {
+        console.warn("C++ world module not loaded. Build C++/world_module.js/.wasm to enable C++ Item/NPC classes.");
+        return null;
+    }
+    return createWorldModule();
+}).then((Module) => {
+    worldModule = Module;
+    if (Module) {
+        Module.ccall("worldInit", null, [], []);
+        console.log("C++ Item and NPC systems connected!");
+    }
+    return Module;
+}).catch((error) => {
+    console.error("C++ Item/NPC module failed to load:", error);
+    return null;
+});
+
 class GameScene extends Phaser.Scene {
 
     constructor() {
@@ -152,6 +207,16 @@ class GameScene extends Phaser.Scene {
         this.treeChallengeOpen = false;
         this.treeChallengeObjects = [];
         this.treeChallengeCompleted = false;
+        this.debugQuestOpen = false;
+        this.debugQuestObjects = [];
+        this.debugQuestCompleted = {};
+
+        // C Stack / Queue gameplay state, with a safe fallback if a module is missing.
+        this.actionHistoryFallback = [];
+        this.taskQueueFallback = [];
+        this.integrationPanelOpen = false;
+        this.integrationPanelObjects = [];
+        this.labAssistant = null;
     }
 
 
@@ -471,6 +536,9 @@ class GameScene extends Phaser.Scene {
 
         // Only award XP after both C and C++ succeed.
         this.questCompleted = true;
+        this.completeQueuedTask("Complete linked-list challenge");
+        this.enqueueGameTask("Ask mentor about notebook");
+        this.recordGameAction("Completed linked-list challenge (+10 XP)");
         await this.awardXP(10);
 
         // Display feedback.
@@ -682,6 +750,177 @@ class GameScene extends Phaser.Scene {
 
 
     // ==========================================
+    // C STACK / C QUEUE / C++ WORLD INTEGRATION
+    // ==========================================
+
+    recordGameAction(action) {
+        if (!action) return;
+        this.actionHistoryFallback.unshift(action);
+        this.actionHistoryFallback = this.actionHistoryFallback.slice(0, 10);
+        if (stackModule) {
+            try {
+                const count = stackModule.ccall("stackGetCount", "number", [], []);
+                if (count >= 10) stackModule.ccall("stackDropOldest", "number", [], []);
+                stackModule.ccall("stackPush", "number", ["string"], [action]);
+            } catch (error) { console.error("C stack push failed:", error); }
+        }
+    }
+
+    enqueueGameTask(task) {
+        if (!task) return;
+        if (!this.taskQueueFallback.includes(task)) {
+            this.taskQueueFallback.push(task);
+            this.taskQueueFallback = this.taskQueueFallback.slice(0, 10);
+            if (queueModule) {
+                const added = queueModule.ccall("queueAddTask", "number", ["string"], [task]);
+                if (!added) console.warn("C queue is full or rejected task:", task);
+            }
+        }
+    }
+
+    completeQueuedTask(task) {
+        if (!task) return false;
+        let completed = false;
+        try {
+            if (queueModule) {
+                completed = queueModule.ccall("queueRemoveTask", "number", ["string"], [task]) === 1;
+            } else {
+                const index = this.taskQueueFallback.indexOf(task);
+                if (index >= 0) {
+                    this.taskQueueFallback.splice(index, 1);
+                    completed = true;
+                }
+            }
+        } catch (error) {
+            console.error("C queue task completion failed:", error);
+        }
+        if (completed && queueModule) {
+            const index = this.taskQueueFallback.indexOf(task);
+            if (index >= 0) this.taskQueueFallback.splice(index, 1);
+        }
+        return completed;
+    }
+
+    async logCppNpcInteraction(index) {
+        this.recordGameAction(index === 0 ? "Talked to Programming Mentor" : index === 1 ? "Talked to Lab Assistant" : "Visited Campus Shop");
+        const module = await worldReady;
+        if (!module) return;
+        try {
+            const message = module.ccall("worldNpcMessage", "string", ["number"], [index]);
+            if (message) console.log("C++ NPC interaction:", message);
+            // Mentor and Shopkeeper already open their own dialogue windows; avoid covering them with a toast.
+            if (index === 1 && message && !this.questDialogueOpen) this.showNpcToast(message);
+        } catch (error) {
+            console.error("C++ NPC interaction failed:", error);
+        }
+    }
+
+    showNpcToast(message) {
+        if (!message || !this.add) return;
+        const box = this.add.rectangle(400, 470, 590, 42, 0x10251d, 0.96).setStrokeStyle(1, 0x7cffb2).setDepth(30);
+        const text = this.add.text(400, 470, message, {
+            fontSize: "15px", color: "#ffffff", align: "center", wordWrap: { width: 560 }
+        }).setOrigin(0.5).setDepth(31);
+        this.time.delayedCall(2600, () => { box.destroy(); text.destroy(); });
+    }
+
+    async mirrorWorldItem(name, quantity, description) {
+        const module = await worldReady;
+        if (!module) return false;
+        try {
+            return module.ccall("worldAddItem", "number", ["string", "number", "string"], [name, quantity, description]) === 1;
+        } catch (error) {
+            console.error("C++ Item mirror failed:", error);
+            return false;
+        }
+    }
+
+    async useInventoryItem(name, energyRestore) {
+        const inventory = await hashTableReady;
+        const world = await worldReady;
+        const player = await cppPlayerReady;
+        if (!inventory || !world || !player || typeof inventory._decrementItemQuantity !== "function") {
+            this.setInventoryMessage("Item use needs the rebuilt C hash-table, C++ world, and Player modules. Run build_all_modules.bat first.");
+            return;
+        }
+        try {
+            const hashQuantity = inventory.ccall("searchItemQuantity", "number", ["string"], [name]);
+            const worldQuantity = world.ccall("worldGetItemQuantity", "number", ["string"], [name]);
+            if (hashQuantity <= 0 || worldQuantity <= 0) {
+                this.setInventoryMessage(name + " is not available in both inventory systems.");
+                return;
+            }
+            const used = world.ccall("worldUseItem", "number", ["string"], [name]);
+            if (!used) {
+                this.setInventoryMessage("The C++ Item class could not use " + name + ".");
+                return;
+            }
+            const decremented = inventory.ccall("decrementItemQuantity", "number", ["string", "number"], [name, 1]);
+            if (!decremented) {
+                // Restore the C++ quantity if the hash-table rejected the same operation.
+                world.ccall("worldAddItem", "number", ["string", "number", "string"], [name, 1, "Restored after inventory sync check."]);
+                this.setInventoryMessage("The C hash table could not update the quantity; item use was cancelled.");
+                return;
+            }
+            player.ccall("playerRestoreEnergy", null, ["number"], [energyRestore]);
+            this.syncPlayerStats();
+            this.recordGameAction("Used " + name + " (restored up to " + energyRestore + " energy)");
+            this.setInventoryMessage(name + " used. Player energy restored by up to " + energyRestore + ".");
+            await this.refreshInventoryList();
+        } catch (error) {
+            console.error("Item use failed:", error);
+            this.setInventoryMessage("Could not use " + name + ". Check the browser console.");
+        }
+    }
+
+    async showIntegrationPanel(kind) {
+        if (this.integrationPanelOpen) return;
+        this.integrationPanelOpen = true;
+        this.player.body.setVelocity(0);
+        this.integrationPanelObjects = [];
+        const add = (obj) => { obj.setDepth(60); this.integrationPanelObjects.push(obj); return obj; };
+        add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
+        const isHistory = kind === "history";
+        add(this.add.text(400, 55, isHistory ? "ACTION HISTORY — C STACK" : "PENDING TASKS — C CIRCULAR QUEUE", {
+            fontSize: "25px", color: "#ffffff", fontStyle: "bold"
+        }).setOrigin(0.5));
+        let lines = [];
+        try {
+            if (isHistory && stackModule) {
+                const count = stackModule.ccall("stackGetCount", "number", [], []);
+                for (let i = 0; i < count; i++) lines.push((i + 1) + ". " + stackModule.ccall("stackGetActionAt", "string", ["number"], [i]));
+            } else if (!isHistory && queueModule) {
+                const count = queueModule.ccall("queueGetCount", "number", [], []);
+                for (let i = 0; i < count; i++) lines.push((i + 1) + ". " + queueModule.ccall("queueGetTaskAt", "string", ["number"], [i]));
+            }
+        } catch (error) { console.error("Could not read C stack/queue:", error); }
+        if (!lines.length) lines = (isHistory ? this.actionHistoryFallback : this.taskQueueFallback).map((line, i) => (i + 1) + ". " + line);
+        add(this.add.text(100, 120, lines.length ? lines.join("\n\n") : (isHistory ? "No actions recorded yet." : "No pending tasks."), {
+            fontSize: "19px", color: "#d8f4e6", lineSpacing: 7, wordWrap: { width: 600 }
+        }));
+        add(this.add.text(400, 550, "Press " + (isHistory ? "H" : "Q") + " or ESC to close", {
+            fontSize: "16px", color: "#b8c7d9"
+        }).setOrigin(0.5));
+    }
+
+    closeIntegrationPanel() {
+        this.integrationPanelOpen = false;
+        this.integrationPanelObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
+        this.integrationPanelObjects = [];
+    }
+
+    async interactWithLabAssistant() {
+        const module = await worldReady;
+        let message = "The Programming Lab is ready.";
+        if (module) {
+            try { message = module.ccall("worldNpcMessage", "string", ["number"], [1]); }
+            catch (error) { console.error("Lab Assistant message failed:", error); }
+        }
+        this.recordGameAction("Talked to Lab Assistant");
+        this.showQuestDialogue("LAB ASSISTANT", message, [{ label: "Thanks", callback: () => {} }]);
+    }
+
+    // ==========================================
     // C HASH TABLE INVENTORY UI
     // Press I to open/close this screen.
     // ==========================================
@@ -705,7 +944,7 @@ class GameScene extends Phaser.Scene {
         add(this.add.text(400, 48, "CIPHER VALLEY — INVENTORY", {
             fontSize: "28px", color: "#ffffff", fontStyle: "bold"
         }).setOrigin(0.5));
-        add(this.add.text(400, 84, "Powered by your C hash table (linear probing)", {
+        add(this.add.text(400, 84, "C hash table inventory + C++ Item objects", {
             fontSize: "16px", color: "#b8d8d8"
         }).setOrigin(0.5));
 
@@ -728,9 +967,10 @@ class GameScene extends Phaser.Scene {
             b.on("pointerdown", callback);
         };
 
-        button(145, 500, "Add Coffee +1", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."));
-        button(355, 500, "Add Notebook +1", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."));
-        button(565, 500, "Search Coffee", () => this.searchInventoryItem("Coffee"));
+        button(105, 500, "Add Coffee +1", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."));
+        button(300, 500, "Add Notebook +1", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."));
+        button(495, 500, "Search Coffee", () => this.searchInventoryItem("Coffee"));
+        button(690, 500, "Use Coffee", () => this.useInventoryItem("Coffee", 20));
         button(400, 555, "Close  [I / Esc]", () => this.closeInventory());
 
         this.inventoryExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -745,7 +985,9 @@ class GameScene extends Phaser.Scene {
         }
         try {
             module.ccall("insertItem", null, ["string", "number", "string"], [name, 1, description]);
-            this.setInventoryMessage(name + " added/updated by the C hash table.");
+            await this.mirrorWorldItem(name, 1, description);
+            this.recordGameAction("Added " + name + " to inventory");
+            this.setInventoryMessage(name + " added to the C hash table and mirrored by the C++ Item class.");
             await this.refreshInventoryList();
         } catch (error) {
             console.error("C hash-table insert failed:", error);
@@ -903,6 +1145,9 @@ class GameScene extends Phaser.Scene {
                     label: "Accept Quest",
                     callback: () => {
                         this.notebookQuestAccepted = true;
+                        this.completeQueuedTask("Ask mentor about notebook");
+                        this.enqueueGameTask("Collect Notebook");
+                        this.recordGameAction("Accepted Notebook quest");
                         this.updateQuestHUD();
                         this.showQuestDialogue(
                             "QUEST ACCEPTED",
@@ -921,7 +1166,7 @@ class GameScene extends Phaser.Scene {
         if (!this.coffeeQuestCompleted) {
             this.showQuestDialogue(
                 "MENTOR",
-                "Before we begin DSA training, help your friend repair the vending machine. It introduces the interaction and coding mechanics used throughout Cipher Valley.",
+                "Welcome to Cipher Valley — a campus where every broken machine hides a programming lesson. The coding festival begins tonight, but the hostel vending machine has failed and your friend is counting on you. Repair it first; then I will teach you how to turn data structures into tools, not just textbook definitions.",
                 [{ label: "I'll do it", callback: () => {} }]
             );
             return;
@@ -929,6 +1174,9 @@ class GameScene extends Phaser.Scene {
 
         // The linked-list challenge follows the mandatory opening quest.
         if (!this.questCompleted) {
+            this.completeQueuedTask("Meet Programming Mentor");
+            this.enqueueGameTask("Complete linked-list challenge");
+            this.recordGameAction("Started linked-list challenge");
             this.showDSAChallenge();
             return;
         }
@@ -976,6 +1224,8 @@ class GameScene extends Phaser.Scene {
                     return;
                 }
                 this.notebookQuestCompleted = true;
+                this.completeQueuedTask("Return Notebook to Mentor");
+                this.recordGameAction("Completed Notebook quest (+20 XP)");
                 const xpAwarded = await this.awardXP(20);
                 if (!xpAwarded) {
                     this.notebookQuestCompleted = false;
@@ -1010,11 +1260,17 @@ class GameScene extends Phaser.Scene {
     }
 
     async openCampusShop() {
+        const world = await worldReady;
+        let greeting = "Riya: I have some useful items for you.";
+        if (world) {
+            try { greeting = world.ccall("worldNpcMessage", "string", ["number"], [2]); }
+            catch (error) { console.error("Could not read C++ Shopkeeper greeting:", error); }
+        }
         this.showQuestDialogue(
             "CAMPUS SHOP",
-            this.notebookQuestAccepted
+            greeting + "\n\n" + (this.notebookQuestAccepted
                 ? "The mentor needs a Notebook. Collect one to complete the quest."
-                : "Welcome to the campus shop. You can collect a Notebook here for your DSA notes.",
+                : "Welcome to the campus shop. You can collect a Notebook here for your DSA notes."),
             [
                 {
                     label: "Collect Notebook",
@@ -1030,12 +1286,12 @@ class GameScene extends Phaser.Scene {
                         }
 
                         try {
-                            module.ccall(
-                                "insertItem",
-                                null,
-                                ["string", "number", "string"],
-                                ["Notebook", 1, "A notebook for recording DSA clues."]
-                            );
+                            const notebookDescription = "A notebook for recording DSA clues.";
+                            module.ccall("insertItem", null, ["string", "number", "string"], ["Notebook", 1, notebookDescription]);
+                            await this.mirrorWorldItem("Notebook", 1, notebookDescription);
+                            this.completeQueuedTask("Collect Notebook");
+                            this.enqueueGameTask("Return Notebook to Mentor");
+                            this.recordGameAction("Collected Notebook from campus shop");
                             this.showQuestDialogue(
                                 "NOTEBOOK COLLECTED",
                                 "The Notebook has been stored in the C hash-table inventory. Return to the Mentor and press E.",
@@ -1074,7 +1330,7 @@ class GameScene extends Phaser.Scene {
         if (this.coffeeQuestAccepted) {
             this.showQuestDialogue(
                 "YOUR FRIEND",
-                "The vending machine is beside the hostel. Inspect its program and repair the missing condition. You can use hints if you need them.",
+                "The hostel vending machine broke just before the campus coding festival. The mentor suspects a missing condition, but the error log is scrambled. Inspect its program, follow the clues, and help the team get the campus ready. You can use hints if you need them.",
                 [{ label: "On my way", callback: () => {} }]
             );
             return;
@@ -1088,6 +1344,8 @@ class GameScene extends Phaser.Scene {
                     label: "Accept Quest",
                     callback: () => {
                         this.coffeeQuestAccepted = true;
+                        this.enqueueGameTask("Repair vending machine");
+                        this.recordGameAction("Accepted Coffee Crisis quest");
                         this.updateQuestHUD();
                         this.showQuestDialogue(
                             "QUEST ACCEPTED: COFFEE CRISIS",
@@ -1263,9 +1521,9 @@ class GameScene extends Phaser.Scene {
         try {
             const existing = module.ccall("searchItemQuantity", "number", ["string"], ["Coffee"]);
             if (existing <= 0) {
-                module.ccall("insertItem", null, ["string", "number", "string"], [
-                    "Coffee", 1, "Fresh coffee collected after repairing the campus vending machine."
-                ]);
+                const coffeeDescription = "Fresh coffee collected after repairing the campus vending machine.";
+                module.ccall("insertItem", null, ["string", "number", "string"], ["Coffee", 1, coffeeDescription]);
+                await this.mirrorWorldItem("Coffee", 1, coffeeDescription);
             }
             const xpAwarded = await this.awardXP(15);
             if (!xpAwarded) {
@@ -1273,6 +1531,9 @@ class GameScene extends Phaser.Scene {
                 return;
             }
             this.coffeeQuestCompleted = true;
+            this.completeQueuedTask("Repair vending machine");
+            this.enqueueGameTask("Meet Programming Mentor");
+            this.recordGameAction("Completed Coffee Crisis quest (+15 XP)");
             if (this.vendingStatus) {
                 this.vendingStatus.setText("ONLINE").setColor("#7dffb3");
             }
@@ -1423,6 +1684,12 @@ class GameScene extends Phaser.Scene {
             }
         );
 
+        // LAB ASSISTANT — backed by the C++ LabAssistant class.
+        this.labAssistant = this.add.rectangle(330, 220, 36, 36, 0x2ec4b6);
+        this.add.text(292, 241, "LAB ASSISTANT", {
+            fontSize: "11px", color: "#ffffff", fontStyle: "bold"
+        });
+
         // FRIEND NPC — introduces the mandatory opening quest.
         this.friend = this.add.rectangle(330, 300, 38, 38, 0xd17ce8);
         this.add.text(300, 325, "FRIEND", {
@@ -1451,6 +1718,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.existing(this.npc, true);
         this.physics.add.existing(this.shopkeeper, true);
         this.physics.add.existing(this.friend, true);
+        this.physics.add.existing(this.labAssistant, true);
         this.physics.add.existing(this.vendingMachine, true);
 
         // COLLISIONS
@@ -1459,6 +1727,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.collider(this.player, this.npc);
         this.physics.add.collider(this.player, this.shopkeeper);
         this.physics.add.collider(this.player, this.friend);
+        this.physics.add.collider(this.player, this.labAssistant);
         this.physics.add.collider(this.player, this.vendingMachine);
 
         // KEYBOARD CONTROLS
@@ -1483,6 +1752,9 @@ class GameScene extends Phaser.Scene {
         // Open the Binary Search Tree DSA challenge at any time with T.
         this.treeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
         this.treeExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        // Optional debugging side quests are available from anywhere with B.
+        this.debugQuestKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+        this.debugQuestExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
         // INTERACTION BACKGROUND
         this.interactionBox = this.add.rectangle(
@@ -1566,6 +1838,14 @@ class GameScene extends Phaser.Scene {
         });
         this.treeHintText.setDepth(5);
 
+        this.integrationHintText = this.add.text(15, 245, "H: History | Q: Tasks | B: Debug Quests", {
+            fontSize: "14px", color: "#d8f4e6", backgroundColor: "#10251d", padding: { x: 8, y: 5 }
+        });
+        this.integrationHintText.setDepth(5);
+        this.historyKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
+        this.taskQueueKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+        this.integrationExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+
         // Continuous campus clock: one game minute per two real seconds.
         this.gameMinutes = 6 * 60; // Wake-up time: 6:00 AM
         this.gameDay = 1;
@@ -1598,6 +1878,17 @@ class GameScene extends Phaser.Scene {
         });
 
         this.updateQuestHUD();
+
+        // Initialize C data structures and seed the first task. Missing optional
+        // modules degrade gracefully, but the build script can generate all of them.
+        Promise.all([stackReady, queueReady, worldReady]).then(([stack, queue]) => {
+            try { if (stack) stack.ccall("stackClear", null, [], []); } catch (error) { console.error(error); }
+            try { if (queue) queue.ccall("queueClear", null, [], []); } catch (error) { console.error(error); }
+            this.actionHistoryFallback = [];
+            this.taskQueueFallback = [];
+            this.enqueueGameTask("Repair vending machine");
+            this.recordGameAction("Started Day 1 at 6:00 AM");
+        });
     }
 
 
@@ -1623,12 +1914,125 @@ class GameScene extends Phaser.Scene {
     }
 
     // ==========================================
+    // DEBUGGING SIDE QUESTS (PRESS B)
+    // ==========================================
+    showDebugQuestBoard() {
+        if (this.debugQuestOpen || this.treeChallengeOpen || this.dsaOpen ||
+            this.inventoryOpen || this.questDialogueOpen || this.coffeeChallengeOpen) return;
+        this.debugQuestOpen = true;
+        this.player.body.setVelocity(0);
+        this.recordGameAction("Opened Debug Quest Board");
+        if (Object.keys(this.debugQuestCompleted).length < 4) this.enqueueGameTask("Complete a debugging side quest");
+        this.debugQuestObjects = [];
+        const add = (obj) => {
+            obj.setDepth(120);
+            this.debugQuestObjects.push(obj);
+            return obj;
+        };
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.96));
+        add(this.add.rectangle(400, 300, 650, 480, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
+        add(this.add.text(400, 85, "DEBUGGING QUEST BOARD", {
+            fontSize: "25px", color: "#7CFFB2", fontStyle: "bold"
+        }).setOrigin(0.5));
+        add(this.add.text(400, 120, "Help the campus team fix four small code issues. Each quest pays +10 XP.", {
+            fontSize: "15px", color: "#d8f4e6", align: "center", wordWrap: { width: 570 }
+        }).setOrigin(0.5));
+        const quests = [
+            { id: "null", title: "1. NULL Pointer", detail: "A linked-list head is NULL. What should you do before reading head->next?",
+                options: ["Check head != NULL", "Call free(head)", "Use head->next first"], correct: 0,
+                success: "Good safety check! Always validate a pointer before dereferencing it." },
+            { id: "loop", title: "2. Infinite Loop", detail: "A loop never ends because i stays at 0. What is missing?",
+                options: ["An update such as i++", "Another printf", "A larger array"], correct: 0,
+                success: "Correct! Loop control needs an update that moves toward the stopping condition." },
+            { id: "hash", title: "3. Hash Collision", detail: "Two items map to the same hash-table index. What is a common fix?",
+                options: ["Linear probing", "Delete the whole table", "Always use index 0"], correct: 0,
+                success: "Correct! Linear probing checks later slots until a suitable one is found." },
+            { id: "condition", title: "4. Broken Condition", detail: "A vending machine should work only when stock > 0. Which condition is right?",
+                options: ["stock > 0", "stock < 0", "stock == -1"], correct: 0,
+                success: "Fixed! A clear condition prevents the machine from serving an empty slot." }
+        ];
+        quests.forEach((quest, i) => {
+            const y = 175 + i * 72;
+            const done = !!this.debugQuestCompleted[quest.id];
+            const button = add(this.add.rectangle(400, y, 540, 54, done ? 0x245b49 : 0x263746)
+                .setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: !done }));
+            const label = add(this.add.text(400, y, done ? quest.title + "  ✓ COMPLETED" : quest.title, {
+                fontSize: "17px", color: done ? "#7CFFB2" : "#ffffff", align: "center"
+            }).setOrigin(0.5));
+            if (!done) button.on("pointerdown", () => this.showDebugQuestQuestion(quest));
+        });
+        add(this.add.text(400, 475, "Press B or ESC to close", {
+            fontSize: "15px", color: "#b8c7d9"
+        }).setOrigin(0.5));
+    }
+
+    showDebugQuestQuestion(quest) {
+        if (!this.debugQuestOpen || this.debugQuestCompleted[quest.id]) return;
+        this.debugQuestObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
+        this.debugQuestObjects = [];
+        const add = (obj) => {
+            obj.setDepth(125);
+            this.debugQuestObjects.push(obj);
+            return obj;
+        };
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.97));
+        add(this.add.rectangle(400, 300, 650, 430, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
+        add(this.add.text(400, 125, quest.title, {
+            fontSize: "24px", color: "#7CFFB2", fontStyle: "bold"
+        }).setOrigin(0.5));
+        add(this.add.text(400, 185, quest.detail, {
+            fontSize: "18px", color: "#ffffff", align: "center", wordWrap: { width: 540 }
+        }).setOrigin(0.5));
+        const feedback = add(this.add.text(400, 410, "", {
+            fontSize: "16px", color: "#ffcc66", align: "center", wordWrap: { width: 550 }
+        }).setOrigin(0.5));
+        quest.options.forEach((option, index) => {
+            const y = 270 + index * 52;
+            const button = add(this.add.rectangle(400, y, 520, 40, 0x263746)
+                .setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }));
+            const label = add(this.add.text(400, y, String.fromCharCode(65 + index) + ") " + option, {
+                fontSize: "16px", color: "#ffffff", align: "center", wordWrap: { width: 490 }
+            }).setOrigin(0.5));
+            button.on("pointerdown", async () => {
+                if (this.debugQuestCompleted[quest.id]) return;
+                if (index !== quest.correct) {
+                    feedback.setText("Not quite — try another answer.");
+                    return;
+                }
+                this.debugQuestCompleted[quest.id] = true;
+                this.completeQueuedTask("Complete a debugging side quest");
+                this.recordGameAction("Completed " + quest.title + " (+10 XP)");
+                feedback.setColor("#7CFFB2");
+                feedback.setText(quest.success + "\n+10 XP");
+                await this.awardXP(10);
+                this.updateQuestHUD();
+                this.time.delayedCall(1100, () => {
+                    if (!this.scene || !this.scene.isActive()) return;
+                    this.closeDebugQuestBoard();
+                    this.showDebugQuestBoard();
+                });
+            });
+        });
+        add(this.add.text(400, 500, "Choose the best fix. Incorrect answers can be retried.", {
+            fontSize: "14px", color: "#b8c7d9", align: "center"
+        }).setOrigin(0.5));
+    }
+
+    closeDebugQuestBoard() {
+        this.debugQuestOpen = false;
+        this.debugQuestObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
+        this.debugQuestObjects = [];
+    }
+
+    // ==========================================
     // BINARY SEARCH TREE TRAINING (PRESS T)
     // ==========================================
     async showTreeChallenge() {
         if (this.treeChallengeOpen || this.dsaOpen || this.inventoryOpen ||
             this.questDialogueOpen || this.coffeeChallengeOpen) return;
         this.treeChallengeOpen = true;
+        if (!this.treeChallengeCompleted) this.enqueueGameTask("Complete Tree DSA challenge");
+        this.recordGameAction("Opened Tree DSA challenge");
         this.player.body.setVelocity(0);
         this.treeChallengeObjects = [];
 
@@ -1637,7 +2041,7 @@ class GameScene extends Phaser.Scene {
         add(this.add.text(400, 65, "TREE TRAINING — BINARY SEARCH TREE", {
             fontSize: "24px", color: "#7CFFB2", fontStyle: "bold", align: "center"
         }).setOrigin(0.5).setDepth(101));
-        add(this.add.text(400, 100, "Insert 40, 20, 60, 10 into a BST", {
+        add(this.add.text(400, 100, "Insert 40, 20, 60, 10, 30 into a BST", {
             fontSize: "18px", color: "#ffffff", align: "center"
         }).setOrigin(0.5).setDepth(101));
 
@@ -1646,32 +2050,32 @@ class GameScene extends Phaser.Scene {
         if (module) {
             try {
                 module.ccall("treeReset", null, [], []);
-                [40, 20, 60, 10].forEach(value => module.ccall("treeInsert", null, ["number"], [value]));
+                [40, 20, 60, 10, 30].forEach(value => module.ccall("treeInsert", null, ["number"], [value]));
             } catch (error) { console.error("C BST initialization failed:", error); }
         }
 
         // Draw the teaching tree in Phaser. Values mirror the C insert sequence.
         const line = (x1, y1, x2, y2) => add(this.add.line(0, 0, x1, y1, x2, y2, 0x7CFFB2).setLineWidth(3).setDepth(101));
-        line(400, 170, 280, 230); line(400, 170, 520, 230); line(280, 230, 220, 290);
+        line(400, 170, 280, 230); line(400, 170, 520, 230); line(280, 230, 220, 290); line(280, 230, 335, 290);
         const node = (x, y, label) => {
             add(this.add.circle(x, y, 25, 0x245b49).setStrokeStyle(3, 0x7CFFB2).setDepth(102));
             add(this.add.text(x, y, String(label), { fontSize: "18px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5).setDepth(103));
         };
-        node(400, 170, 40); node(280, 230, 20); node(520, 230, 60); node(220, 290, 10);
+        node(400, 170, 40); node(280, 230, 20); node(520, 230, 60); node(220, 290, 10); node(335, 290, 30);
         add(this.add.text(400, 335, "Question: What is the INORDER traversal?", {
             fontSize: "20px", color: "#ffffff", fontStyle: "bold", align: "center"
         }).setOrigin(0.5).setDepth(101));
 
-        const options = ["40, 20, 10, 60", "10, 20, 40, 60", "20, 10, 60, 40"];
+        const options = ["10, 20, 30, 40, 60", "40, 20, 10, 30, 60", "10, 30, 20, 60, 40"];
         options.forEach((answer, index) => {
             const y = 385 + index * 48;
             const button = add(this.add.rectangle(400, y, 440, 38, 0x263746).setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }).setDepth(101));
             const label = add(this.add.text(400, y, `${String.fromCharCode(65 + index)}) ${answer}`, {
                 fontSize: "17px", color: "#ffffff", align: "center"
             }).setOrigin(0.5).setDepth(102));
-            button.on("pointerdown", () => this.answerTreeChallenge(index === 1, button, label));
+            button.on("pointerdown", () => this.answerTreeChallenge(index === 0, button, label));
         });
-        add(this.add.text(400, 535, "Press ESC to close  •  Correct answer earns +15 XP", {
+        add(this.add.text(400, 535, "Press ESC to close  •  Correct answer earns +20 XP", {
             fontSize: "15px", color: "#b8c7d9", align: "center"
         }).setOrigin(0.5).setDepth(101));
     }
@@ -1684,7 +2088,9 @@ class GameScene extends Phaser.Scene {
             return;
         }
         this.treeChallengeCompleted = true;
-        let traversal = "10, 20, 40, 60";
+        this.completeQueuedTask("Complete Tree DSA challenge");
+        this.recordGameAction("Completed Tree DSA challenge (+20 XP)");
+        let traversal = "10, 20, 30, 40, 60";
         if (treeModule) {
             try {
                 const count = treeModule.ccall("treeGetCount", "number", [], []);
@@ -1693,10 +2099,10 @@ class GameScene extends Phaser.Scene {
                 if (values.length) traversal = values.join(", ");
             } catch (error) { console.error("Could not read C BST traversal:", error); }
         }
-        label.setText("CORRECT! Inorder: " + traversal + "  |  +15 XP");
+        label.setText("CORRECT! Inorder: " + traversal + "  |  +20 XP");
         label.setColor("#7CFFB2");
         button.setFillStyle(0x245b49);
-        await this.awardXP(15);
+        await this.awardXP(20);
         this.updateQuestHUD();
         console.log("Tree Training completed. Inorder:", traversal);
     }
@@ -1712,6 +2118,40 @@ class GameScene extends Phaser.Scene {
     // ==========================================
 
     update() {
+
+        // C Stack / Queue panels pause movement until closed.
+        if (this.integrationPanelOpen) {
+            this.player.body.setVelocity(0);
+            if (Phaser.Input.Keyboard.JustDown(this.historyKey) ||
+                Phaser.Input.Keyboard.JustDown(this.taskQueueKey) ||
+                Phaser.Input.Keyboard.JustDown(this.integrationExitKey)) {
+                this.closeIntegrationPanel();
+            }
+            return;
+        }
+        const anotherOverlayOpen = this.treeChallengeOpen || this.debugQuestOpen || this.coffeeChallengeOpen ||
+            this.questDialogueOpen || this.inventoryOpen || this.dsaOpen;
+        if (!anotherOverlayOpen && this.historyKey && Phaser.Input.Keyboard.JustDown(this.historyKey)) {
+            this.showIntegrationPanel("history");
+            return;
+        }
+        if (!anotherOverlayOpen && this.taskQueueKey && Phaser.Input.Keyboard.JustDown(this.taskQueueKey)) {
+            this.showIntegrationPanel("queue");
+            return;
+        }
+
+        // Debug quest board pauses normal gameplay while open.
+        if (this.debugQuestOpen) {
+            this.player.body.setVelocity(0);
+            if (Phaser.Input.Keyboard.JustDown(this.debugQuestKey) ||
+                Phaser.Input.Keyboard.JustDown(this.debugQuestExitKey)) this.closeDebugQuestBoard();
+            return;
+        }
+
+        if (this.debugQuestKey && Phaser.Input.Keyboard.JustDown(this.debugQuestKey)) {
+            this.showDebugQuestBoard();
+            return;
+        }
 
         // Tree Training overlay pauses normal gameplay while open.
         if (this.treeChallengeOpen) {
@@ -1815,7 +2255,8 @@ class GameScene extends Phaser.Scene {
             { type: "friend", object: this.friend },
             { type: "vending", object: this.vendingMachine },
             { type: "shopkeeper", object: this.shopkeeper },
-            { type: "mentor", object: this.npc }
+            { type: "mentor", object: this.npc },
+            { type: "labAssistant", object: this.labAssistant }
         ].map(target => ({
             ...target,
             distance: Phaser.Math.Distance.Between(
@@ -1835,7 +2276,8 @@ class GameScene extends Phaser.Scene {
                 shopkeeper: "Press E to visit campus shop",
                 mentor: this.coffeeQuestCompleted
                     ? (!this.questCompleted ? "Press E to begin DSA training" : "Press E to talk to mentor")
-                    : "Mentor: finish the Coffee Crisis first"
+                    : "Mentor: finish the Coffee Crisis first",
+                labAssistant: "Press E to talk to Lab Assistant"
             };
             this.interactionText.setText(prompts[nearestTarget.type]);
         } else {
@@ -1846,10 +2288,25 @@ class GameScene extends Phaser.Scene {
         // PRESS E TO INTERACT WITH THE CLOSEST NPC OR OBJECT
         if (Phaser.Input.Keyboard.JustDown(this.interactKey) && nearestTarget) {
             switch (nearestTarget.type) {
-                case "friend": this.interactWithFriend(); break;
-                case "vending": this.interactWithVendingMachine(); break;
-                case "shopkeeper": this.openCampusShop(); break;
-                case "mentor": this.interactWithMentor(); break;
+                case "friend":
+                    this.recordGameAction("Talked to Friend");
+                    this.interactWithFriend();
+                    break;
+                case "vending":
+                    this.recordGameAction("Inspected vending machine");
+                    this.interactWithVendingMachine();
+                    break;
+                case "shopkeeper":
+                    this.logCppNpcInteraction(2);
+                    this.openCampusShop();
+                    break;
+                case "mentor":
+                    this.logCppNpcInteraction(0);
+                    this.interactWithMentor();
+                    break;
+                case "labAssistant":
+                    this.interactWithLabAssistant();
+                    break;
             }
         }
 

@@ -2,103 +2,66 @@
 #include <stdlib.h>
 #include <string.h>
 
-
-// QUEST NODE
-struct Quest
-{
+#define QUEST_NAME_LEN 80
+typedef struct QuestNode {
     int id;
-    char name[50];
+    char name[QUEST_NAME_LEN];
     int completed;
+    struct QuestNode *next;
+} QuestNode;
+static QuestNode *questHead = NULL;
+static int questCount = 0;
 
-    struct Quest *next;
-};
-
-
-struct Quest *head = NULL;
-
-
-// ADD QUEST AT END
-void addQuest(int id, const char name[])
-{
-    struct Quest *newQuest;
-
-
-    newQuest = malloc(sizeof(struct Quest));
-
-if (newQuest == NULL)
-{
-    printf("Memory allocation failed.\n");
-    return;
-}
-    newQuest->id = id;
-    snprintf(newQuest->name, sizeof(newQuest->name), "%s", name);
-    newQuest->completed = 0;
-    newQuest->next = NULL;
-
-
-    // If list is empty
-    if (head == NULL)
-    {
-        head = newQuest;
-        return;
-    }
-
-
-    // Traverse to last node
-    struct Quest *temp = head;
-
-    while (temp->next != NULL)
-    {
-        temp = temp->next;
-    }
-
-    temp->next = newQuest;
+static QuestNode *findQuest(int id) {
+    for (QuestNode *p = questHead; p; p = p->next) if (p->id == id) return p;
+    return NULL;
 }
 
-
-// COMPLETE QUEST
-void completeQuest(int id)
-{
-    struct Quest *temp = head;
-
-    while (temp != NULL)
-    {
-        if (temp->id == id)
-        {
-            temp->completed = 1;
-
-            printf("\nQuest completed: %s\n",
-                   temp->name);
-
-            return;
-        }
-
-        temp = temp->next;
+int addQuest(int id, const char *name) {
+    if (!name || id < 0) return 0;
+    QuestNode *existing = findQuest(id);
+    if (existing) {
+        snprintf(existing->name, QUEST_NAME_LEN, "%s", name);
+        return 1;
     }
-
-    printf("\nQuest not found.\n");
+    QuestNode *node = (QuestNode *)calloc(1, sizeof(QuestNode));
+    if (!node) return 0;
+    node->id = id;
+    snprintf(node->name, QUEST_NAME_LEN, "%s", name);
+    if (!questHead) questHead = node;
+    else {
+        QuestNode *tail = questHead;
+        while (tail->next) tail = tail->next;
+        tail->next = node;
+    }
+    ++questCount;
+    return 1;
 }
 
-
-// DISPLAY QUESTS
-void displayQuests()
-{
-    struct Quest *temp = head;
-
-    printf("\n--- CIPHER VALLEY QUESTS ---\n");
-
-    while (temp != NULL)
-    {
-        printf("\nQuest ID: %d", temp->id);
-        printf("\nQuest: %s", temp->name);
-
-        if (temp->completed == 1)
-            printf("\nStatus: Completed\n");
-        else
-            printf("\nStatus: Active\n");
-
-        temp = temp->next;
-    }
+int completeQuest(int id) {
+    QuestNode *node = findQuest(id);
+    if (!node) return 0;
+    node->completed = 1;
+    return 1;
 }
 
+int isQuestCompleted(int id) {
+    QuestNode *node = findQuest(id);
+    return node ? node->completed : 0;
+}
 
+int getQuestCount(void) { return questCount; }
+
+void displayQuests(void) {
+    for (QuestNode *p = questHead; p; p = p->next)
+        printf("Quest %d: %s [%s]\n", p->id, p->name, p->completed ? "COMPLETED" : "ACTIVE");
+}
+
+void clearQuests(void) {
+    while (questHead) {
+        QuestNode *next = questHead->next;
+        free(questHead);
+        questHead = next;
+    }
+    questCount = 0;
+}

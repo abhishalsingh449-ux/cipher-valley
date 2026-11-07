@@ -1,126 +1,83 @@
 #include <stdio.h>
+#include <string.h>
 
-#define MAX 10
+#define CV_QUEUE_MAX 10
+#define CV_TASK_LEN 80
+static char taskQueue[CV_QUEUE_MAX][CV_TASK_LEN];
+static int queueFront = -1;
+static int queueRear = -1;
+static int queueCount = 0;
+static char resultBuffer[CV_TASK_LEN];
 
-char queue[MAX][50];
-
-int front = -1;
-int rear = -1;
-
-
-// ENQUEUE
-void enqueue(const char task[]) {
-
-    // Queue is full
-    if ((rear + 1) % MAX == front) {
-        printf("Queue Overflow\n");
-        return;
-    }
-
-    // First element
-    if (front == -1) {
-        front = 0;
-        rear = 0;
-    }
-    else {
-        rear = (rear + 1) % MAX;
-    }
-
-    snprintf(queue[rear], 50, "%s", task);
-
-    printf("Task added: %s\n", task);
+int queueAddTask(const char *task) {
+    if (!task || queueCount >= CV_QUEUE_MAX) return 0;
+    if (queueFront < 0) queueFront = 0;
+    queueRear = (queueRear + 1) % CV_QUEUE_MAX;
+    snprintf(taskQueue[queueRear], CV_TASK_LEN, "%s", task);
+    ++queueCount;
+    return 1;
 }
 
-
-// DEQUEUE
-void dequeue() {
-
-    // Queue is empty
-    if (front == -1) {
-        printf("Queue is empty.\n");
-        return;
+const char *queueProcessNextTask(void) {
+    if (queueCount == 0 || queueFront < 0) return "";
+    snprintf(resultBuffer, sizeof(resultBuffer), "%s", taskQueue[queueFront]);
+    taskQueue[queueFront][0] = '\0';
+    if (queueCount == 1) {
+        queueFront = queueRear = -1;
+    } else {
+        queueFront = (queueFront + 1) % CV_QUEUE_MAX;
     }
-
-    printf("Processing task: %s\n", queue[front]);
-
-    // Only one element was present
-    if (front == rear) {
-        front = -1;
-        rear = -1;
-    }
-    else {
-        front = (front + 1) % MAX;
-    }
+    --queueCount;
+    return resultBuffer;
 }
 
-
-// PEEK
-void peekQueue() {
-
-    if (front == -1) {
-        printf("Queue is empty.\n");
-        return;
-    }
-
-    printf("Next task: %s\n", queue[front]);
+const char *queuePeekTask(void) {
+    return queueCount == 0 || queueFront < 0 ? "" : taskQueue[queueFront];
 }
 
-
-// DISPLAY
-void displayQueue() {
-
-    if (front == -1) {
-        printf("Queue is empty.\n");
-        return;
+int queueRemoveTask(const char *task) {
+    if (!task || queueCount == 0 || queueFront < 0) return 0;
+    int foundOffset = -1;
+    for (int offset = 0; offset < queueCount; ++offset) {
+        int index = (queueFront + offset) % CV_QUEUE_MAX;
+        if (strcmp(taskQueue[index], task) == 0) { foundOffset = offset; break; }
     }
-
-    printf("\nTask Queue:\n");
-
-    int i = front;
-    int count = 1;
-
-    while (1) {
-
-        printf("%d. %s\n", count, queue[i]);
-
-        if (i == rear) {
-            break;
-        }
-
-        i = (i + 1) % MAX;
-        count++;
+    if (foundOffset < 0) return 0;
+    for (int offset = foundOffset; offset < queueCount - 1; ++offset) {
+        int current = (queueFront + offset) % CV_QUEUE_MAX;
+        int next = (queueFront + offset + 1) % CV_QUEUE_MAX;
+        memmove(taskQueue[current], taskQueue[next], CV_TASK_LEN);
     }
+    taskQueue[queueRear][0] = '\0';
+    if (queueCount == 1) queueFront = queueRear = -1;
+    else queueRear = (queueRear - 1 + CV_QUEUE_MAX) % CV_QUEUE_MAX;
+    --queueCount;
+    return 1;
 }
 
+int queueGetCount(void) { return queueCount; }
 
-// MAIN
-int main() {
+const char *queueGetTaskAt(int index) {
+    if (index < 0 || index >= queueCount || queueFront < 0) return "";
+    return taskQueue[(queueFront + index) % CV_QUEUE_MAX];
+}
 
-    enqueue("Task A");
-    enqueue("Task B");
-    enqueue("Task C");
-    enqueue("Task D");
-    enqueue("Task E");
+void queueClear(void) {
+    while (queueCount > 0) {
+        taskQueue[queueFront][0] = '\0';
+        queueFront = (queueFront + 1) % CV_QUEUE_MAX;
+        --queueCount;
+    }
+    queueFront = queueRear = -1;
+}
 
-    printf("\n");
-
-    displayQueue();
-
-    printf("\n");
-
-    dequeue();
-    dequeue();
-
-    printf("\n");
-
-    enqueue("Task F");
-    enqueue("Task G");
-
-    printf("\n");
-
-    peekQueue();
-
-    displayQueue();
-
+#ifdef CIPHER_VALLEY_STANDALONE
+int main(void) {
+    queueAddTask("Repair vending machine");
+    queueAddTask("Meet programming mentor");
+    queueAddTask("Complete DSA challenge");
+    for (int i = 0; i < queueGetCount(); ++i) printf("%d. %s\n", i + 1, queueGetTaskAt(i));
+    printf("Processing: %s\n", queueProcessNextTask());
     return 0;
 }
+#endif

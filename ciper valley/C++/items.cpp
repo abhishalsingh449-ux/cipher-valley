@@ -1,51 +1,35 @@
-#include <iostream>
 #include "items.h"
+#include <iostream>
 
-using namespace std;
+Item::Item(const std::string& itemName, int itemQuantity, const std::string& itemDescription)
+    : name(itemName), quantity(itemQuantity < 0 ? 0 : itemQuantity), description(itemDescription) {}
 
-
-// Constructor
-Item::Item(string itemName, int itemQuantity, string itemDescription)
-{
-    name = itemName;
-    quantity = itemQuantity;
-    description = itemDescription;
+void Item::displayItem() {
+    std::cout << "\n--- ITEM ---\nName: " << name << "\nQuantity: " << quantity
+              << "\nDescription: " << description << std::endl;
 }
 
-
-// Display item
-void Item::displayItem()
-{
-    cout << "\n--- ITEM ---" << endl;
-    cout << "Name: " << name << endl;
-    cout << "Quantity: " << quantity << endl;
-    cout << "Description: " << description << endl;
+void Item::addItem(int amount) {
+    if (amount <= 0) return;
+    addItemQuietly(amount);
+    std::cout << amount << " " << name << " added." << std::endl;
 }
 
-
-// Add quantity
-void Item::addItem(int amount)
-{
-    quantity += amount;
-
-    cout << amount << " "
-         << name
-         << " added." << endl;
+void Item::useItem() {
+    if (tryUseItem()) std::cout << name << " used." << std::endl;
+    else std::cout << "Item not available." << std::endl;
 }
 
-
-// Use item
-void Item::useItem()
-{
-    if (quantity > 0)
-    {
-        quantity--;
-
-        cout << name
-             << " used." << endl;
-    }
-    else
-    {
-        cout << "Item not available." << endl;
-    }
+void Item::addItemQuietly(int amount) {
+    if (amount > 0) quantity += amount;
 }
+
+bool Item::tryUseItem() {
+    if (quantity <= 0) return false;
+    --quantity;
+    return true;
+}
+
+const std::string& Item::getName() const { return name; }
+const std::string& Item::getDescription() const { return description; }
+int Item::getQuantity() const { return quantity; }
