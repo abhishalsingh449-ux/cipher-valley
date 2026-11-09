@@ -1,98 +1,22 @@
 # Cipher Valley
 
-## A Gamified Environment for Learning Programming and Developing Computational Problem-Solving Skills
+Cipher Valley is a browser based learning game prototype about C/C++ programming and data structures. Players explore a small campus, enter themed rooms, talk with characters, complete quests, and practice linked lists, hash tables, stacks, queues, and trees.
 
-Cipher Valley is a research-oriented educational game designed to explore the potential of gamification in programming education.
+## Run locally
 
-Instead of presenting programming exercises as isolated questions, Cipher Valley integrates programming challenges into an interactive, story-driven game environment. Players progress through the game by solving programming problems, completing quests, interacting with characters, and unlocking new areas.
+1. From `ciper valley/`, run `build_all_modules.bat` in a Windows terminal to compile the C and C++ WebAssembly modules. The Emscripten SDK is bundled in that folder.
+2. Serve the `ciper valley/` directory over HTTP. For example, with Python installed, open a terminal there and run `python -m http.server 8000`.
+3. Open `http://localhost:8000` in a modern browser. WebAssembly modules require HTTP; opening `index.html` directly as a `file://` URL will not work.
 
-## Problem Statement
+Use **WASD** to move, **Shift** to sprint, and **E** to interact with nearby people, doors, and objects. The **hostel bed** advances the clock to morning and restores energy. **I** opens inventory; **T** starts tree practice. The on-screen prompts show other context-sensitive controls. Progress saves in the browser's local storage. Add `?newgame=1` to the URL once to clear the current run and start fresh.
 
-Beginners often find programming difficult because conventional learning methods can become repetitive and provide limited motivation, contextual learning, and guidance during problem solving.
+## Implementation
 
-Cipher Valley proposes a gamified environment where programming challenges become part of gameplay and progression.
+- Phaser and JavaScript provide the campus, interiors, interactions, HUD, and save system.
+- Emscripten builds the C linked list, hash table, stack, queue, tree, and vending-machine modules to WebAssembly.
+- C++ modules provide player progression, quest state, and the NPC/item world bridge.
+- `DEVELOPMENT_LOG.md` records the final-phase implementation and verification.
 
-## Objectives
+## Current prototype limits
 
-- Develop a gamified environment for programming practice.
-- Integrate programming challenges into an interactive game world.
-- Provide progressive difficulty and contextual hints.
-- Provide immediate feedback to learners.
-- Encourage debugging and computational problem solving.
-- Study the effect of gamification on learner engagement.
-- Explore the use of C++ and Data Structures & Algorithms within the system.
-
-## Research Focus
-
-**Primary Research Question:**
-
-How does a gamified programming environment affect learner engagement and problem-solving experience?
-
-The evaluation may consider:
-
-- Challenges attempted
-- Challenges completed
-- Number of attempts
-- Hint usage
-- Completion time
-- User feedback and engagement
-
-## Proposed Technology
-
-- Phaser.js
-- JavaScript
-- HTML/CSS
-- C++
-- Data Structures & Algorithms
-- JSON / SQLite
-- Git
-- GitHub
-
-## Proposed DSA Components
-
-Future development may incorporate:
-
-- Arrays
-- Strings
-- Stacks
-- Queues
-- Hashing
-- Trees
-- Graphs
-- BFS
-- DFS
-- Dijkstra's Algorithm
-- Searching and Sorting
-
-## Project Status
-
-**Phase 1 — Research, Planning and Prototype Design**
-
-The current phase focuses on defining the research problem, objectives, methodology, system architecture, and initial prototype requirements.
-
-## Future Scope
-
-- Programming challenges in C/C++
-- Data Structures and Algorithms challenges
-- Advanced debugging challenges
-- Adaptive difficulty
-- AI-assisted feedback
-- Progress analytics
-- Multiplayer challenges
-- Teacher/student dashboards
-
-## Repository Structure
-
-The repository will gradually contain:
-
-```text
-cipher-valley
-. README.md
-. docs
-. phase-1
-. src
-. cpp
-. game
-. data
-. assets
-. tests
+The campus and rooms are compact prototype scenes with programmatically drawn pixel art. Progress is stored per browser, not on a server. Some quest interfaces are game-specific exercises rather than a general-purpose C/C++ editor. The project is an educational prototype and has not undergone a formal learner study.

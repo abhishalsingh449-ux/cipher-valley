@@ -214,6 +214,19 @@ const treeReady = Promise.resolve().then(() => {
     return null;
 });
 
+let vendingModule = null;
+const vendingReady = Promise.resolve().then(() => {
+    if (typeof createVendingModule !== "function") throw new Error("C vending-machine module is unavailable.");
+    return createVendingModule();
+}).then(Module => {
+    vendingModule = Module;
+    console.log("C vending-machine debugging module connected!");
+    return Module;
+}).catch(error => {
+    console.error("C vending-machine module failed to load:", error);
+    return null;
+});
+
 // ==========================================
 // C STACK + C CIRCULAR QUEUE MODULES
 // ==========================================
@@ -366,10 +379,10 @@ class GameScene extends Phaser.Scene {
         // GAME PROGRESS
         this.dsaOpen = false;
         this.questCompleted = !!gameState.questCompleted;
-        this.dsaXP = 0;
-        this.playerEnergy = 100;
+        this.dsaXP = Math.max(0, Number(gameState.playerXP) || 0);
+        this.playerEnergy = Phaser.Math.Clamp(Number(gameState.playerEnergy ?? 100), 0, 100);
         this.playerLevel = 1;
-        this.playerTotalXP = 0;
+        this.playerTotalXP = this.dsaXP;
         this.nextEnergyTick = 0;
         this.playerStatsText = null;
         this.answerSubmitted = false;
@@ -795,6 +808,7 @@ class GameScene extends Phaser.Scene {
             this.playerEnergy = cppPlayerModule.ccall("playerGetEnergy", "number", [], []);
             this.playerLevel = cppPlayerModule.ccall("playerGetLevel", "number", [], []);
             this.playerTotalXP = cppPlayerModule.ccall("playerGetXP", "number", [], []);
+            this.dsaXP = this.playerTotalXP;
             if (this.playerStatsText) {
                 this.playerStatsText.setText(
                     "LEVEL " + this.playerLevel + "  |  XP " + this.playerTotalXP + "\nENERGY " + this.playerEnergy + "/100  |  Hold SHIFT to sprint"
@@ -1645,7 +1659,7 @@ class GameScene extends Phaser.Scene {
         document.body.appendChild(input);
         this.coffeeCodeInput = input;
 
-        const status = add(this.add.text(400, 440, "", {
+        const status = add(this.add.text(400, 463, "", {
             fontSize: "16px", color: "#ffe08a", align: "center",
             wordWrap: { width: 620 }
         }).setOrigin(0.5));
@@ -1686,14 +1700,21 @@ class GameScene extends Phaser.Scene {
         if (!this.coffeeCodeInput || !this.coffeeCodeStatus) return;
         this.coffeeAttempts++;
         const answer = this.coffeeCodeInput.value.trim().replace(/;$/, "");
-        if (answer !== "stock") {
+        const vending = await vendingReady;
+        if (!vending) {
+            this.coffeeCodeStatus.setText("The C vending-machine module is unavailable. No code was accepted.");
+            return;
+        }
+        const passed = vending.ccall("vendingValidateFix", "number", ["string"], [answer]) === 1;
+        if (!passed) {
             this.coffeeCodeStatus.setText(
                 "TEST FAILED: The condition still can't compare the request with available stock. Review the hint and try again."
             );
             return;
         }
 
-        this.coffeeCodeStatus.setText("TEST PASSED: The dispenser logic is valid. Restarting machine...");
+        const passedTests = vending.ccall("vendingRunTests", "number", [], []);
+        this.coffeeCodeStatus.setText(`C TEST PASSED: ${passedTests}/5 dispenser cases passed. Restarting machine...`);
         const playerModule = await cppPlayerReady;
         if (!playerModule) {
             this.coffeeCodeStatus.setText("The C++ Player module is unavailable, so the quest reward was not issued. Check the Console and module script path.");
@@ -1725,14 +1746,14 @@ class GameScene extends Phaser.Scene {
                 this.vendingStatus.setText("ONLINE").setColor("#7dffb3");
             }
             this.updateQuestHUD();
-            this.coffeeCodeStatus.setText("SUCCESS! Coffee dispensed. +15 XP. Coffee was added to the C hash-table inventory.");
+            this.coffeeCodeStatus.setText(`SUCCESS! C tests ${passedTests}/5 passed. Coffee added to the C hash-table inventory. +15 XP.`);
             console.log("Coffee Crisis completed. Attempts:", this.coffeeAttempts, "Hints used:", this.coffeeHintLevel);
             this.time.delayedCall(1600, () => {
                 if (this.coffeeChallengeOpen) {
                     this.closeCoffeeCodingChallenge();
                     this.showQuestDialogue(
                         "QUEST COMPLETED: COFFEE CRISIS",
-                        "You repaired the vending machine by fixing its stock condition. Your friend gets coffee, you earned 15 XP, and Coffee is now stored in the C hash-table inventory. Next: visit the mentor to begin the linked-list quest.",
+                        `You repaired the vending machine by fixing its stock condition. The compiled C tests passed ${passedTests}/5 cases. Your friend gets coffee, you earned 15 XP, and Coffee is stored in the C hash-table inventory. Next: visit the mentor to begin the linked-list quest.`,
                         [{ label: "Let's go", callback: () => {} }]
                     );
                 }
@@ -1916,8 +1937,8 @@ class GameScene extends Phaser.Scene {
         this.add.text(665, 440, "VENDING", {
             fontSize: "14px", color: "#ffffff", fontStyle: "bold"
         });
-        this.vendingStatus = this.add.text(660, 455, "ERROR", {
-            fontSize: "12px", color: "#ff7777", fontStyle: "bold"
+        this.vendingStatus = this.add.text(660, 455, this.coffeeQuestCompleted ? "ONLINE" : "ERROR", {
+            fontSize: "12px", color: this.coffeeQuestCompleted ? "#7dffb3" : "#ff7777", fontStyle: "bold"
         });
 
         // LAB PHYSICS
@@ -2120,8 +2141,8 @@ class GameScene extends Phaser.Scene {
         });
         this.saveProgress();
         if (gameState.location !== "campus") {
+            this.interiorActive = true;
             this.scene.launch("InteriorScene", { location: gameState.location });
-            this.scene.pause();
         }
     }
 
@@ -2391,11 +2412,11 @@ class GameScene extends Phaser.Scene {
     enterInterior(location) {
         if (gameState.location !== "campus") return;
         this.currentLocation = location;
+        this.interiorActive = true;
         gameState.location = location;
         this.recordGameAction(`Entered ${location}`);
         this.saveProgress();
         this.scene.launch("InteriorScene", { location });
-        this.scene.pause();
     }
 
     // ==========================================
@@ -2403,6 +2424,11 @@ class GameScene extends Phaser.Scene {
     // ==========================================
 
     update() {
+
+        if (this.interiorActive) {
+            this.player.body.setVelocity(0);
+            return;
+        }
 
         // C Stack / Queue panels pause movement until closed.
         if (this.integrationPanelOpen) {
@@ -2933,10 +2959,10 @@ class InteriorScene extends Phaser.Scene {
             this.exiting = true;
             const campus = this.scene.get("GameScene");
             campus.currentLocation = "campus";
+            campus.interiorActive = false;
             campus.recordGameAction(`Left ${this.location}`);
             campus.saveProgress();
             this.scene.stop("InteriorScene");
-            this.scene.resume("GameScene");
             return;
         }
         if (target.action === "sleep") {

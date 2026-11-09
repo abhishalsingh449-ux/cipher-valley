@@ -32,6 +32,9 @@ if errorlevel 1 goto :failed
 "%EMCC%" DSA\tree.c -std=c11 -o tree_module.js %C_FLAGS% -s EXPORT_NAME=createTreeModule -s EXPORTED_FUNCTIONS=['_treeReset','_treeInsert','_treeSearch','_treeGetCount','_treeGetInorderAt','_treeGetRootValue']
 if errorlevel 1 goto :failed
 
+"%EMCC%" DSA\vending_machine.c -std=c11 -o vending_module.js %C_FLAGS% -s EXPORT_NAME=createVendingModule -s EXPORTED_FUNCTIONS=['_vendingCanDispense','_vendingDispense','_vendingRunTests','_vendingValidateFix']
+if errorlevel 1 goto :failed
+
 "%EMXX%" C++\player.cpp C++\player_bridge.cpp -std=c++17 -o C++\player_module.js %C_FLAGS% -s EXPORT_NAME=createPlayerModule -s EXPORTED_FUNCTIONS=['_playerInit','_playerAddXP','_playerUseEnergy','_playerRestoreEnergy','_playerGetEnergy','_playerGetLevel','_playerGetXP','_playerDisplay']
 if errorlevel 1 goto :failed
 
