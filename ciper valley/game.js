@@ -3,6 +3,97 @@
 // ==========================================
 // C++ PLAYER MODULE
 // ==========================================
+const SAVE_KEY = "cipher-valley-save-v1";
+
+function loadGameState() {
+    const defaults = {
+        version: 1,
+        location: "hostel",
+        campusX: 400,
+        campusY: 300,
+        gameMinutes: 360,
+        gameDay: 1,
+        playerXP: 0,
+        playerEnergy: 100,
+        coins: 50,
+        interiorX: 260,
+        interiorY: 300,
+        questCompleted: false,
+        coffeeQuestAccepted: false,
+        coffeeQuestCompleted: false,
+        notebookQuestAccepted: false,
+        notebookQuestCompleted: false,
+        treeChallengeCompleted: false,
+        labPracticeCompleted: {},
+        debugQuestCompleted: {},
+        inventory: {},
+        actionHistory: [],
+        taskQueue: [],
+        storyStep: 0
+    };
+    const startFresh = new URLSearchParams(globalThis.location?.search || "").has("newgame");
+    if (startFresh) {
+        globalThis.history?.replaceState({}, "", globalThis.location.pathname);
+        return defaults;
+    }
+    try {
+        const saved = JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || "null");
+        if (!saved || saved.version !== 1) return defaults;
+        return {
+            ...defaults,
+            ...saved,
+            debugQuestCompleted: saved.debugQuestCompleted || {},
+            labPracticeCompleted: saved.labPracticeCompleted || {},
+            inventory: saved.inventory || {},
+            actionHistory: Array.isArray(saved.actionHistory) ? saved.actionHistory : [],
+            taskQueue: Array.isArray(saved.taskQueue) ? saved.taskQueue : []
+        };
+    } catch (error) {
+        console.warn("Cipher Valley save could not be loaded:", error);
+        return defaults;
+    }
+}
+
+const gameState = loadGameState();
+
+function persistGameState() {
+    try {
+        globalThis.localStorage?.setItem(SAVE_KEY, JSON.stringify(gameState));
+    } catch (error) {
+        console.warn("Cipher Valley save could not be written:", error);
+    }
+}
+
+let activeGameScene = null;
+let gameClockTimer = null;
+const gameClockListeners = new Set();
+
+function formatGameClock() {
+    const minutes = Phaser.Math.Clamp(Number(gameState.gameMinutes) || 0, 0, 1439);
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    const period = hour >= 12 ? "PM" : "AM";
+    const hour12 = hour % 12 || 12;
+    return `DAY ${gameState.gameDay} | ${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
+function startGameClock() {
+    if (gameClockTimer !== null) return;
+    gameClockTimer = globalThis.setInterval(() => {
+        gameState.gameMinutes = (Number(gameState.gameMinutes) + 1) % 1440;
+        if (gameState.gameMinutes === 0) gameState.gameDay = Math.max(1, Number(gameState.gameDay) || 1) + 1;
+        gameClockListeners.forEach(listener => listener(formatGameClock()));
+        persistGameState();
+    }, 2000);
+}
+
+if (globalThis.window) {
+    ["pagehide", "beforeunload"].forEach(eventName => window.addEventListener(eventName, () => {
+        if (activeGameScene) activeGameScene.saveProgress();
+        else persistGameState();
+    }));
+}
+
 let cppPlayerModule = null;
 const cppPlayerReady = Promise.resolve()
     .then(() => {
@@ -14,6 +105,10 @@ const cppPlayerReady = Promise.resolve()
     .then((Module) => {
         cppPlayerModule = Module;
         Module.ccall("playerInit", "number", ["string"], ["Cipher Valley Player"]);
+        const savedXP = Math.max(0, Number(gameState.playerXP) || 0);
+        const savedEnergy = Phaser.Math.Clamp(Number(gameState.playerEnergy ?? 100), 0, 100);
+        if (savedXP) Module.ccall("playerAddXP", null, ["number"], [savedXP]);
+        if (savedEnergy < 100) Module.ccall("playerUseEnergy", "number", ["number"], [100 - savedEnergy]);
         console.log("C++ Player System Connected!");
         return Module;
     })
@@ -40,6 +135,7 @@ const cppQuestReady = Promise.resolve()
     })
     .then((Module) => {
         cppQuestModule = Module;
+        if (gameState.questCompleted) Module.ccall("completeLinkedListQuest", "number", [], []);
         console.log("C++ Quest System Connected!");
         return Module;
     })
@@ -52,13 +148,9 @@ const linkedListReady = createLinked_list()
     .then((Module) => {
         linkedListModule = Module;
 
-        // Register the quest once when the C module loads
-        linkedListModule.ccall(
-            "addQuest",
-            null,
-            ["number", "string"],
-            [1, "Learn Linked List"]
-        );
+        linkedListModule.ccall("clearQuests", null, [], []);
+        linkedListModule.ccall("addQuest", "number", ["number", "string"], [1, "Learn Linked List"]);
+        if (gameState.questCompleted) linkedListModule.ccall("completeQuest", "number", ["number"], [1]);
 
         console.log("C Linked List loaded successfully!");
         console.log("Quest registered in C linked list.");
@@ -91,6 +183,10 @@ let hashTableModule = null;
 const hashTableReady = createHash_table()
     .then((Module) => {
         hashTableModule = Module;
+        Object.entries(gameState.inventory).forEach(([name, item]) => {
+            const quantity = Math.max(0, Number(item?.quantity) || 0);
+            if (quantity) Module.ccall("insertItem", null, ["string", "number", "string"], [name, quantity, item.description || ""]);
+        });
         console.log("C hash-table inventory loaded successfully!");
         return Module;
     })
@@ -133,7 +229,11 @@ const stackReady = Promise.resolve().then(() => {
     return createStackModule();
 }).then((Module) => {
     stackModule = Module;
-    if (Module) console.log("C Stack module connected: action history is active.");
+    if (Module) {
+        Module.ccall("stackClear", null, [], []);
+        [...gameState.actionHistory].reverse().slice(-10).forEach(action => Module.ccall("stackPush", "number", ["string"], [action]));
+        console.log("C Stack module connected: action history is active.");
+    }
     return Module;
 }).catch((error) => {
     console.error("C Stack module failed to load; using in-game fallback:", error);
@@ -148,7 +248,11 @@ const queueReady = Promise.resolve().then(() => {
     return createQueueModule();
 }).then((Module) => {
     queueModule = Module;
-    if (Module) console.log("C circular queue module connected: quest tasks are active.");
+    if (Module) {
+        Module.ccall("queueClear", null, [], []);
+        gameState.taskQueue.slice(0, 10).forEach(task => Module.ccall("queueAddTask", "number", ["string"], [task]));
+        console.log("C circular queue module connected: quest tasks are active.");
+    }
     return Module;
 }).catch((error) => {
     console.error("C queue module failed to load; using in-game fallback:", error);
@@ -165,6 +269,10 @@ const worldReady = Promise.resolve().then(() => {
     worldModule = Module;
     if (Module) {
         Module.ccall("worldInit", null, [], []);
+        Object.entries(gameState.inventory).forEach(([name, item]) => {
+            const quantity = Math.max(0, Number(item?.quantity) || 0);
+            if (quantity) Module.ccall("worldAddItem", "number", ["string", "number", "string"], [name, quantity, item.description || ""]);
+        });
         console.log("C++ Item and NPC systems connected!");
     }
     return Module;
@@ -173,14 +281,91 @@ const worldReady = Promise.resolve().then(() => {
     return null;
 });
 
+function createPixelCharacterTexture(scene, key, shirtColor) {
+    if (scene.textures.exists(key)) return;
+    const frameWidth = 32;
+    const frameHeight = 48;
+    const texture = scene.textures.createCanvas(key, frameWidth * 4, frameHeight * 4);
+    const context = texture.context;
+    const drawPixel = (x, y, width, height, color) => {
+        context.fillStyle = color;
+        context.fillRect(x, y, width, height);
+    };
+    for (let direction = 0; direction < 4; direction++) {
+        for (let frame = 0; frame < 4; frame++) {
+            const ox = frame * frameWidth;
+            const oy = direction * frameHeight;
+            const step = frame === 1 ? -2 : frame === 3 ? 2 : 0;
+            drawPixel(ox + 9, oy + 3, 14, 12, "#d9a477");
+            drawPixel(ox + 8, oy + 2, 16, 6, "#32231f");
+            if (direction === 3) drawPixel(ox + 8, oy + 4, 16, 10, "#32231f");
+            if (direction !== 3) {
+                drawPixel(ox + 11, oy + 9, 2, 2, "#231b1a");
+                drawPixel(ox + 19, oy + 9, 2, 2, "#231b1a");
+            }
+            drawPixel(ox + 7, oy + 16, 18, 14, shirtColor);
+            drawPixel(ox + 4, oy + 17, 4, 11, shirtColor);
+            drawPixel(ox + 24, oy + 17, 4, 11, shirtColor);
+            drawPixel(ox + 9 + step, oy + 29, 6, 13, "#303d5a");
+            drawPixel(ox + 17 - step, oy + 29, 6, 13, "#303d5a");
+            drawPixel(ox + 8 + step, oy + 41, 8, 4, "#2a2423");
+            drawPixel(ox + 16 - step, oy + 41, 8, 4, "#2a2423");
+            if (direction === 1) drawPixel(ox + 7, oy + 3, 4, 12, "#32231f");
+            if (direction === 2) drawPixel(ox + 21, oy + 3, 4, 12, "#32231f");
+        }
+    }
+    texture.refresh();
+    for (let direction = 0; direction < 4; direction++) {
+        for (let frame = 0; frame < 4; frame++) {
+            texture.add(`d${direction}f${frame}`, 0, frame * frameWidth, direction * frameHeight, frameWidth, frameHeight);
+        }
+    }
+}
+
+function ensureCharacterAnimations(scene) {
+    const directions = ["down", "left", "right", "up"];
+    directions.forEach((direction, index) => {
+        const key = `player-walk-${direction}`;
+        if (!scene.anims.exists(key)) {
+            scene.anims.create({
+                key,
+                frames: [0, 1, 2, 3].map(frame => ({ key: "cv-player", frame: `d${index}f${frame}` })),
+                frameRate: 7,
+                repeat: -1
+            });
+        }
+    });
+}
+
+function updatePlayerAnimation(player, velocityX, velocityY) {
+    if (!player?.anims) return;
+    if (Math.abs(velocityX) + Math.abs(velocityY) > 1) {
+        let direction = "down";
+        let index = 0;
+        if (Math.abs(velocityX) > Math.abs(velocityY)) {
+            direction = velocityX < 0 ? "left" : "right";
+            index = velocityX < 0 ? 1 : 2;
+        } else if (velocityY < 0) {
+            direction = "up";
+            index = 3;
+        }
+        player.lastDirection = index;
+        player.anims.play(`player-walk-${direction}`, true);
+    } else {
+        player.anims.stop();
+        player.setFrame(`d${player.lastDirection || 0}f0`);
+    }
+}
+
 class GameScene extends Phaser.Scene {
 
     constructor() {
         super("GameScene");
+        this.currentLocation = "campus";
 
         // GAME PROGRESS
         this.dsaOpen = false;
-        this.questCompleted = false;
+        this.questCompleted = !!gameState.questCompleted;
         this.dsaXP = 0;
         this.playerEnergy = 100;
         this.playerLevel = 1;
@@ -192,28 +377,28 @@ class GameScene extends Phaser.Scene {
         this.inventoryMessage = "";
 
         // MANDATORY OPENING QUEST: THE COFFEE CRISIS
-        this.coffeeQuestAccepted = false;
-        this.coffeeQuestCompleted = false;
+        this.coffeeQuestAccepted = !!gameState.coffeeQuestAccepted;
+        this.coffeeQuestCompleted = !!gameState.coffeeQuestCompleted;
         this.coffeeChallengeOpen = false;
         this.coffeeHintLevel = 0;
         this.coffeeAttempts = 0;
         this.coffeeOverlayElements = [];
 
         // NOTEBOOK QUEST PROGRESS
-        this.notebookQuestAccepted = false;
-        this.notebookQuestCompleted = false;
+        this.notebookQuestAccepted = !!gameState.notebookQuestAccepted;
+        this.notebookQuestCompleted = !!gameState.notebookQuestCompleted;
         this.questDialogueOpen = false;
         this.questDialogueObjects = [];
         this.treeChallengeOpen = false;
         this.treeChallengeObjects = [];
-        this.treeChallengeCompleted = false;
+        this.treeChallengeCompleted = !!gameState.treeChallengeCompleted;
         this.debugQuestOpen = false;
         this.debugQuestObjects = [];
-        this.debugQuestCompleted = {};
+        this.debugQuestCompleted = { ...gameState.debugQuestCompleted };
 
         // C Stack / Queue gameplay state, with a safe fallback if a module is missing.
-        this.actionHistoryFallback = [];
-        this.taskQueueFallback = [];
+        this.actionHistoryFallback = [...gameState.actionHistory];
+        this.taskQueueFallback = [...gameState.taskQueue];
         this.integrationPanelOpen = false;
         this.integrationPanelObjects = [];
         this.labAssistant = null;
@@ -971,6 +1156,8 @@ class GameScene extends Phaser.Scene {
         button(300, 500, "Add Notebook +1", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."));
         button(495, 500, "Search Coffee", () => this.searchInventoryItem("Coffee"));
         button(690, 500, "Use Coffee", () => this.useInventoryItem("Coffee", 20));
+        button(200, 450, "Use Energy Drink", () => this.useInventoryItem("Energy Drink", 40));
+        button(600, 450, "Use Snack", () => this.useInventoryItem("Snack", 10));
         button(400, 555, "Close  [I / Esc]", () => this.closeInventory());
 
         this.inventoryExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -1584,9 +1771,11 @@ class GameScene extends Phaser.Scene {
     // ==========================================
 
     preload() {
-
-        // Assets will be loaded here later
-
+        createPixelCharacterTexture(this, "cv-player", "#2a9d8f");
+        createPixelCharacterTexture(this, "cv-mentor", "#335c9c");
+        createPixelCharacterTexture(this, "cv-assistant", "#218c88");
+        createPixelCharacterTexture(this, "cv-shopkeeper", "#d99025");
+        createPixelCharacterTexture(this, "cv-friend", "#9954a9");
     }
 
 
@@ -1595,6 +1784,7 @@ class GameScene extends Phaser.Scene {
     // ==========================================
 
     create() {
+        ensureCharacterAnimations(this);
 
         // CAMPUS BACKGROUND
         this.campusBackground = this.add.rectangle(
@@ -1643,22 +1833,47 @@ class GameScene extends Phaser.Scene {
             }
         );
 
+        this.hostelDoor = this.add.circle(650, 226, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.labDoor = this.add.circle(200, 226, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+
+        // Additional campus facilities with their own playable interiors.
+        this.library = this.add.rectangle(130, 455, 155, 100, 0x7056a5).setStrokeStyle(3, 0xd8c7ff);
+        this.add.text(83, 445, "LIBRARY", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
+        this.libraryDoor = this.add.circle(130, 512, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.canteen = this.add.rectangle(400, 455, 155, 100, 0xb95e36).setStrokeStyle(3, 0xffd3a8);
+        this.add.text(356, 445, "CANTEEN", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
+        this.canteenDoor = this.add.circle(400, 512, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.campusShop = this.add.rectangle(670, 500, 155, 85, 0x376a87).setStrokeStyle(3, 0xb6e5ff);
+        this.add.text(630, 480, "CAMPUS SHOP", { fontSize: "14px", color: "#ffffff", fontStyle: "bold" });
+        this.shopDoor = this.add.circle(670, 552, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.treeGarden = this.add.rectangle(400, 105, 170, 70, 0x2c6e49).setStrokeStyle(2, 0x8be0a6);
+        this.add.text(345, 97, "TREE GARDEN", { fontSize: "15px", color: "#ffffff", fontStyle: "bold" });
+        [315, 350, 455, 490].forEach(x => this.add.circle(x, 95, 12, 0x174f2b).setStrokeStyle(2, 0x80c783));
+        [[70, 100], [80, 325], [285, 510], [520, 510], [590, 260]].forEach(([x, y]) => {
+            this.add.circle(x, y, 15, 0x245b36).setStrokeStyle(2, 0x9acb72);
+            this.add.rectangle(x, y + 20, 6, 15, 0x72512e);
+        });
+        [[300, 385], [520, 385]].forEach(([x, y]) => {
+            this.add.rectangle(x, y, 62, 11, 0x8d6748).setStrokeStyle(2, 0x533f32);
+            this.add.rectangle(x, y + 12, 52, 5, 0x614832);
+        });
+
         // PLAYER
-        this.player = this.add.rectangle(
-            400, 300, 40, 40,
-            0xff0000
-        );
+        this.player = this.add.sprite(
+            Phaser.Math.Clamp(Number(gameState.campusX) || 400, 25, 775),
+            Phaser.Math.Clamp(Number(gameState.campusY) || 300, 25, 575),
+            "cv-player", "d0f0"
+        ).setDisplaySize(40, 48);
+        activeGameScene = this;
 
         // PLAYER PHYSICS
         this.physics.add.existing(this.player);
 
         this.player.body.setCollideWorldBounds(true);
+        this.player.body.setSize(22, 20).setOffset(5, 24);
 
         // MENTOR NPC
-        this.npc = this.add.rectangle(
-            600, 350, 40, 40,
-            0x0000ff
-        );
+        this.npc = this.add.sprite(600, 350, "cv-mentor", "d0f0").setDisplaySize(38, 48);
 
         this.add.text(
             570, 375,
@@ -1670,10 +1885,7 @@ class GameScene extends Phaser.Scene {
         );
 
         // SHOPKEEPER NPC — Notebook quest item source
-        this.shopkeeper = this.add.rectangle(
-            200, 400, 40, 40,
-            0xffa500
-        );
+        this.shopkeeper = this.add.sprite(200, 400, "cv-shopkeeper", "d0f0").setDisplaySize(38, 48);
 
         this.add.text(
             150, 425,
@@ -1685,13 +1897,13 @@ class GameScene extends Phaser.Scene {
         );
 
         // LAB ASSISTANT — backed by the C++ LabAssistant class.
-        this.labAssistant = this.add.rectangle(330, 220, 36, 36, 0x2ec4b6);
+        this.labAssistant = this.add.sprite(330, 220, "cv-assistant", "d0f0").setDisplaySize(34, 44);
         this.add.text(292, 241, "LAB ASSISTANT", {
             fontSize: "11px", color: "#ffffff", fontStyle: "bold"
         });
 
         // FRIEND NPC — introduces the mandatory opening quest.
-        this.friend = this.add.rectangle(330, 300, 38, 38, 0xd17ce8);
+        this.friend = this.add.sprite(330, 300, "cv-friend", "d0f0").setDisplaySize(36, 46);
         this.add.text(300, 325, "FRIEND", {
             fontSize: "14px", color: "#ffffff"
         });
@@ -1713,6 +1925,10 @@ class GameScene extends Phaser.Scene {
 
         // HOSTEL PHYSICS
         this.physics.add.existing(this.hostel, true);
+        this.physics.add.existing(this.library, true);
+        this.physics.add.existing(this.canteen, true);
+        this.physics.add.existing(this.campusShop, true);
+        this.physics.add.existing(this.treeGarden, true);
 
         // NPC PHYSICS
         this.physics.add.existing(this.npc, true);
@@ -1724,6 +1940,10 @@ class GameScene extends Phaser.Scene {
         // COLLISIONS
         this.physics.add.collider(this.player, this.lab);
         this.physics.add.collider(this.player, this.hostel);
+        this.physics.add.collider(this.player, this.library);
+        this.physics.add.collider(this.player, this.canteen);
+        this.physics.add.collider(this.player, this.campusShop);
+        this.physics.add.collider(this.player, this.treeGarden);
         this.physics.add.collider(this.player, this.npc);
         this.physics.add.collider(this.player, this.shopkeeper);
         this.physics.add.collider(this.player, this.friend);
@@ -1847,16 +2067,21 @@ class GameScene extends Phaser.Scene {
         this.integrationExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
         // Continuous campus clock: one game minute per two real seconds.
-        this.gameMinutes = 6 * 60; // Wake-up time: 6:00 AM
-        this.gameDay = 1;
-        this.gameClockText = this.add.text(520, 80, "DAY 1 | 06:00 AM", {
+        this.gameMinutes = Phaser.Math.Clamp(Number(gameState.gameMinutes ?? 360), 0, 1439);
+        this.gameDay = Math.max(1, Number(gameState.gameDay) || 1);
+        this.gameClockText = this.add.text(520, 80, formatGameClock(), {
             fontSize: "16px", color: "#ffffff", backgroundColor: "#263238",
             padding: { x: 8, y: 6 }
         });
         this.gameClockText.setDepth(5);
-        this.gameMinuteTimer = this.time.addEvent({
-            delay: 2000, callback: this.advanceGameMinute, callbackScope: this, loop: true
-        });
+        this.gameClockListener = (timeText) => {
+            this.gameMinutes = gameState.gameMinutes;
+            this.gameDay = gameState.gameDay;
+            if (this.gameClockText?.active) this.gameClockText.setText(timeText);
+            this.updateWorldLighting?.();
+        };
+        gameClockListeners.add(this.gameClockListener);
+        startGameClock();
 
         this.coffeeQuestStatusText = this.add.text(15, 175, "Coffee Crisis: Talk to your friend", {
             fontSize: "14px", color: "#ffffff", backgroundColor: "#000000",
@@ -1879,16 +2104,68 @@ class GameScene extends Phaser.Scene {
 
         this.updateQuestHUD();
 
-        // Initialize C data structures and seed the first task. Missing optional
-        // modules degrade gracefully, but the build script can generate all of them.
+        // Native modules are restored from the saved game state before new work is queued.
         Promise.all([stackReady, queueReady, worldReady]).then(([stack, queue]) => {
-            try { if (stack) stack.ccall("stackClear", null, [], []); } catch (error) { console.error(error); }
-            try { if (queue) queue.ccall("queueClear", null, [], []); } catch (error) { console.error(error); }
-            this.actionHistoryFallback = [];
-            this.taskQueueFallback = [];
-            this.enqueueGameTask("Repair vending machine");
-            this.recordGameAction("Started Day 1 at 6:00 AM");
+            if (queue && queue.ccall("queueGetCount", "number", [], []) === 0 && !this.coffeeQuestCompleted) {
+                this.enqueueGameTask("Repair vending machine");
+            }
+            this.recordGameAction(`Resumed Day ${this.gameDay}`);
         });
+
+        this.autoSaveTimer = this.time.addEvent({ delay: 1000, callback: this.saveProgress, callbackScope: this, loop: true });
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            this.saveProgress();
+            gameClockListeners.delete(this.gameClockListener);
+            if (activeGameScene === this) activeGameScene = null;
+        });
+        this.saveProgress();
+        if (gameState.location !== "campus") {
+            this.scene.launch("InteriorScene", { location: gameState.location });
+            this.scene.pause();
+        }
+    }
+
+    saveProgress() {
+        if (this.player) {
+            gameState.campusX = this.player.x;
+            gameState.campusY = this.player.y;
+        }
+        gameState.questCompleted = !!this.questCompleted;
+        gameState.coffeeQuestAccepted = !!this.coffeeQuestAccepted;
+        gameState.coffeeQuestCompleted = !!this.coffeeQuestCompleted;
+        gameState.notebookQuestAccepted = !!this.notebookQuestAccepted;
+        gameState.notebookQuestCompleted = !!this.notebookQuestCompleted;
+        gameState.treeChallengeCompleted = !!this.treeChallengeCompleted;
+        gameState.debugQuestCompleted = { ...this.debugQuestCompleted };
+        gameState.labPracticeCompleted = { ...gameState.labPracticeCompleted };
+        gameState.storyStep = this.coffeeQuestCompleted ? (this.questCompleted ? 2 : 1) : 0;
+        if (cppPlayerModule) {
+            gameState.playerXP = cppPlayerModule.ccall("playerGetXP", "number", [], []);
+            gameState.playerEnergy = cppPlayerModule.ccall("playerGetEnergy", "number", [], []);
+        }
+        if (hashTableModule) {
+            const inventory = {};
+            const count = hashTableModule.ccall("getInventoryCount", "number", [], []);
+            for (let i = 0; i < count; i++) {
+                const name = hashTableModule.ccall("getItemNameAt", "string", ["number"], [i]);
+                inventory[name] = {
+                    quantity: hashTableModule.ccall("getItemQuantityAt", "number", ["number"], [i]),
+                    description: hashTableModule.ccall("getItemDescriptionAt", "string", ["number"], [i])
+                };
+            }
+            gameState.inventory = inventory;
+        }
+        if (stackModule) {
+            const count = stackModule.ccall("stackGetCount", "number", [], []);
+            gameState.actionHistory = Array.from({ length: count }, (_, i) =>
+                stackModule.ccall("stackGetActionAt", "string", ["number"], [i]));
+        }
+        if (queueModule) {
+            const count = queueModule.ccall("queueGetCount", "number", [], []);
+            gameState.taskQueue = Array.from({ length: count }, (_, i) =>
+                queueModule.ccall("queueGetTaskAt", "string", ["number"], [i]));
+        }
+        persistGameState();
     }
 
 
@@ -1901,11 +2178,9 @@ class GameScene extends Phaser.Scene {
             this.gameMinutes = 0;
             this.gameDay++;
         }
-        const hour = Math.floor(this.gameMinutes / 60);
-        const minute = this.gameMinutes % 60;
-        const period = hour >= 12 ? "PM" : "AM";
-        const hour12 = hour % 12 || 12;
-        this.gameClockText.setText(`DAY ${this.gameDay} | ${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`);
+        gameState.gameMinutes = this.gameMinutes;
+        gameState.gameDay = this.gameDay;
+        this.gameClockText.setText(formatGameClock());
         let ground = 0x3a7d44;
         if (hour >= 12 && hour < 17) ground = 0x4d8b49;
         else if (hour >= 17 && hour < 20) ground = 0x6b6847;
@@ -2113,6 +2388,16 @@ class GameScene extends Phaser.Scene {
         this.treeChallengeObjects = [];
     }
 
+    enterInterior(location) {
+        if (gameState.location !== "campus") return;
+        this.currentLocation = location;
+        gameState.location = location;
+        this.recordGameAction(`Entered ${location}`);
+        this.saveProgress();
+        this.scene.launch("InteriorScene", { location });
+        this.scene.pause();
+    }
+
     // ==========================================
     // UPDATE
     // ==========================================
@@ -2249,9 +2534,16 @@ class GameScene extends Phaser.Scene {
 
         // NORMALIZE DIAGONAL MOVEMENT
         this.player.body.velocity.normalize().scale(speed);
+        updatePlayerAnimation(this.player, this.player.body.velocity.x, this.player.body.velocity.y);
 
         // Find the closest interactable character/object.
         const targets = [
+            { type: "hostelDoor", object: this.hostelDoor },
+            { type: "labDoor", object: this.labDoor },
+            { type: "libraryDoor", object: this.libraryDoor },
+            { type: "canteenDoor", object: this.canteenDoor },
+            { type: "shopDoor", object: this.shopDoor },
+            { type: "treeGarden", object: this.treeGarden },
             { type: "friend", object: this.friend },
             { type: "vending", object: this.vendingMachine },
             { type: "shopkeeper", object: this.shopkeeper },
@@ -2271,6 +2563,12 @@ class GameScene extends Phaser.Scene {
             this.interactionBox.setVisible(true);
             this.interactionText.setVisible(true);
             const prompts = {
+                hostelDoor: "Press E to enter Hostel",
+                labDoor: "Press E to enter Programming Lab",
+                libraryDoor: "Press E to enter Library",
+                canteenDoor: "Press E to enter Canteen",
+                shopDoor: "Press E to enter Campus Shop",
+                treeGarden: "Press E to explore the Binary Tree Garden",
                 friend: this.coffeeQuestCompleted ? "Press E to talk to your friend" : "Press E to talk to your friend",
                 vending: this.coffeeQuestCompleted ? "Press E to use vending machine" : "Press E to inspect vending machine",
                 shopkeeper: "Press E to visit campus shop",
@@ -2288,6 +2586,12 @@ class GameScene extends Phaser.Scene {
         // PRESS E TO INTERACT WITH THE CLOSEST NPC OR OBJECT
         if (Phaser.Input.Keyboard.JustDown(this.interactKey) && nearestTarget) {
             switch (nearestTarget.type) {
+                case "hostelDoor": this.enterInterior("hostel"); break;
+                case "labDoor": this.enterInterior("lab"); break;
+                case "libraryDoor": this.enterInterior("library"); break;
+                case "canteenDoor": this.enterInterior("canteen"); break;
+                case "shopDoor": this.enterInterior("shop"); break;
+                case "treeGarden": this.showTreeChallenge(); break;
                 case "friend":
                     this.recordGameAction("Talked to Friend");
                     this.interactWithFriend();
@@ -2316,12 +2620,388 @@ class GameScene extends Phaser.Scene {
 
 
 // ==========================================
+// FUNCTIONAL BUILDING INTERIORS
+// ==========================================
+class InteriorScene extends Phaser.Scene {
+    constructor() {
+        super("InteriorScene");
+        this.location = "hostel";
+        this.targets = [];
+        this.solids = [];
+        this.panelObjects = [];
+        this.panelOpen = false;
+        this.messageText = null;
+    }
+
+    init(data) {
+        this.location = ["hostel", "lab", "library", "canteen", "shop"].includes(data?.location)
+            ? data.location : "hostel";
+    }
+
+    create() {
+        ensureCharacterAnimations(this);
+        const colors = { hostel: 0x9a7252, lab: 0x34495e, library: 0x7056a5, canteen: 0xb95e36, shop: 0x376a87 };
+        this.add.rectangle(400, 300, 800, 600, 0x18232c);
+        this.add.rectangle(400, 300, 760, 560, colors[this.location]).setStrokeStyle(8, 0xe7d7bd);
+        this.add.rectangle(400, 300, 700, 500, 0xd6c39e);
+        this.add.rectangle(400, 52, 700, 8, 0x573d34);
+        this.add.rectangle(400, 548, 700, 8, 0x573d34);
+        this.add.rectangle(52, 300, 8, 500, 0x573d34);
+        this.add.rectangle(748, 300, 8, 500, 0x573d34);
+
+        this.player = this.add.sprite(
+            Phaser.Math.Clamp(Number(gameState.interiorX ?? 400), 80, 720),
+            Phaser.Math.Clamp(Number(gameState.interiorY ?? 450), 100, 500),
+            "cv-player", "d0f0"
+        ).setDisplaySize(36, 48);
+        this.physics.add.existing(this.player);
+        this.player.body.setCollideWorldBounds(true);
+        this.player.body.setSize(22, 20).setOffset(5, 24);
+
+        this.add.text(75, 68, this.location.toUpperCase(), {
+            fontSize: "20px", color: "#ffffff", fontStyle: "bold", backgroundColor: "#17212b", padding: { x: 8, y: 5 }
+        });
+        this.clockText = this.add.text(575, 68, formatGameClock(), {
+            fontSize: "15px", color: "#ffffff", backgroundColor: "#17212b", padding: { x: 8, y: 5 }
+        });
+        this.clockText.setScrollFactor(0);
+        this.clockListener = text => { if (this.clockText?.active) this.clockText.setText(text); };
+        gameClockListeners.add(this.clockListener);
+        this.add.text(340, 570, "E: interact  |  WASD: move  |  Door: return to campus", {
+            fontSize: "14px", color: "#ffffff", backgroundColor: "#17212b", padding: { x: 8, y: 4 }
+        }).setOrigin(0.5);
+
+        this.createExitDoor();
+        this.createInteriorLayout();
+        this.keys = this.input.keyboard.addKeys({
+            W: Phaser.Input.Keyboard.KeyCodes.W,
+            A: Phaser.Input.Keyboard.KeyCodes.A,
+            S: Phaser.Input.Keyboard.KeyCodes.S,
+            D: Phaser.Input.Keyboard.KeyCodes.D
+        });
+        this.interactKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+        this.escapeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        this.input.keyboard.on("keydown-ESC", () => {
+            if (this.panelOpen) this.closePanel();
+        });
+        this.interactionText = this.add.text(400, 525, "", {
+            fontSize: "17px", color: "#ffffff", backgroundColor: "#17212b", padding: { x: 9, y: 6 }
+        }).setOrigin(0.5);
+        this.messageText = this.add.text(400, 490, "", {
+            fontSize: "15px", color: "#e8f5e9", backgroundColor: "#17212b", padding: { x: 8, y: 5 }, align: "center"
+        }).setOrigin(0.5);
+        this.saveTimer = this.time.addEvent({ delay: 1000, callback: this.saveInteriorProgress, callbackScope: this, loop: true });
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            gameClockListeners.delete(this.clockListener);
+            this.saveInteriorProgress();
+        });
+        this.saveInteriorProgress();
+    }
+
+    addSolid(x, y, width, height, color, label) {
+        const object = this.add.rectangle(x, y, width, height, color).setStrokeStyle(2, 0x463b35);
+        this.physics.add.existing(object, true);
+        this.solids.push(object);
+        if (this.player) this.physics.add.collider(this.player, object);
+        if (label) this.add.text(x, y - height / 2 - 18, label, { fontSize: "13px", color: "#1e272e", fontStyle: "bold" }).setOrigin(0.5);
+        return object;
+    }
+
+    addTarget(x, y, label, action, color = 0x2d6a4f) {
+        const marker = this.add.circle(x, y, 10, color).setStrokeStyle(2, 0xffffff);
+        this.targets.push({ x, y, label, action, marker });
+        return marker;
+    }
+
+    createExitDoor() {
+        this.add.rectangle(400, 520, 72, 36, 0x70452f).setStrokeStyle(3, 0xf3d29a);
+        this.addTarget(400, 495, "Return to Campus", "exit", 0xf2cc60);
+    }
+
+    createInteriorLayout() {
+        if (this.location === "hostel") {
+            this.add.rectangle(180, 115, 125, 54, 0x86c5df).setStrokeStyle(4, 0xffffff);
+            this.add.text(180, 115, "WINDOW", { fontSize: "13px", color: "#173042" }).setOrigin(0.5);
+            this.addSolid(205, 220, 190, 95, 0x526c82, "BED");
+            this.add.rectangle(205, 220, 165, 34, 0xf0f4f8);
+            this.addSolid(540, 265, 190, 56, 0x76563c, "");
+            this.add.text(540, 230, "STUDY TABLE", { fontSize: "12px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5);
+            this.add.rectangle(530, 190, 48, 28, 0x243744).setStrokeStyle(3, 0x8dd7ff);
+            this.add.rectangle(530, 190, 36, 17, 0x2a9d8f);
+            this.addSolid(690, 350, 75, 100, 0x6d4c41, "CUPBOARD");
+            this.addSolid(390, 325, 70, 52, 0x574238, "CHAIR");
+            this.addTarget(205, 275, "Bed: sleep until 6:00 AM", "sleep", 0xf2cc60);
+            this.addTarget(530, 215, "Study computer: read a booklet", "booklet", 0x53a8d6);
+        } else if (this.location === "lab") {
+            this.addSolid(400, 110, 360, 48, 0xf4f1de, "PROGRAMMING LAB — DEBUG, BUILD, LEARN");
+            this.add.text(400, 110, "C  |  C++  |  DATA STRUCTURES", { fontSize: "15px", color: "#234", fontStyle: "bold" }).setOrigin(0.5);
+            [[190, 245], [400, 245], [610, 245]].forEach(([x, y], i) => {
+                this.addSolid(x, y, 150, 55, 0x76563c, `WORKSTATION ${i + 1}`);
+                this.add.rectangle(x, y - 38, 70, 40, 0x263746).setStrokeStyle(3, 0x7cffb2);
+                this.add.rectangle(x, y - 38, 55, 25, 0x1b6b64);
+                this.addTarget(x, y + 15, `Workstation ${i + 1}: run a C DSA exercise`, "labStation", 0x2d6a4f);
+            });
+            this.addSolid(200, 400, 145, 75, 0x416a7d, "LAB ASSISTANT");
+            this.addTarget(200, 350, "Ask the Lab Assistant", "assistant", 0x38a3a5);
+            this.addTarget(540, 400, "Read the DSA wall chart", "booklet", 0x53a8d6);
+        } else if (this.location === "library") {
+            [155, 325, 495, 645].forEach((x, i) => {
+                this.addSolid(x, 145, 105, 100, [0x704b35, 0x5c4737, 0x704b35, 0x5c4737][i], "BOOKS");
+                this.addTarget(x, 205, "Browse DSA booklets", "booklet", 0x53a8d6);
+            });
+            [[220, 340], [420, 340], [620, 340]].forEach(([x, y], i) => {
+                this.addSolid(x, y, 140, 48, 0x76563c, `STUDY TABLE ${i + 1}`);
+            });
+            this.addTarget(420, 400, "Research desk: open a DSA exercise", "labStation", 0x2d6a4f);
+        } else if (this.location === "canteen") {
+            this.addSolid(400, 145, 300, 64, 0xb25d35, "FOOD COUNTER");
+            this.addTarget(400, 190, "Order food from the canteen", "canteenShop", 0xe9a23b);
+            [[180, 315], [400, 315], [620, 315]].forEach(([x, y], i) => {
+                this.addSolid(x, y, 125, 55, 0x76563c, `TABLE ${i + 1}`);
+            });
+            this.addTarget(620, 210, "Talk to the Canteen Keeper", "canteenNpc", 0x38a3a5);
+        } else {
+            this.addSolid(400, 145, 320, 65, 0x536b7a, "SHOP COUNTER");
+            this.addTarget(400, 190, "Browse the campus shop", "shop", 0xe9a23b);
+            [[180, 300], [620, 300]].forEach(([x, y], i) => {
+                this.addSolid(x, y, 120, 100, 0x6b8794, i === 0 ? "BOOKS" : "SUPPLIES");
+            });
+        }
+    }
+
+    saveInteriorProgress() {
+        if (!this.exiting) gameState.location = this.location;
+        if (this.player) {
+            gameState.interiorX = this.player.x;
+            gameState.interiorY = this.player.y;
+        }
+        const campus = this.scene.get("GameScene");
+        if (campus && campus.saveProgress) campus.saveProgress();
+        else persistGameState();
+    }
+
+    showMessage(message) {
+        this.messageText?.setText(message);
+        if (this.messageTimer) this.messageTimer.remove(false);
+        this.messageTimer = this.time.delayedCall(3500, () => this.messageText?.setText(""));
+    }
+
+    showPanel(title, body) {
+        this.closePanel();
+        this.panelOpen = true;
+        const add = object => { object.setDepth(100); this.panelObjects.push(object); return object; };
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.92));
+        add(this.add.rectangle(400, 300, 650, 465, 0x182b35).setStrokeStyle(3, 0x7cffb2));
+        add(this.add.text(400, 105, title, { fontSize: "25px", color: "#7cffb2", fontStyle: "bold", align: "center" }).setOrigin(0.5));
+        add(this.add.text(110, 150, body, { fontSize: "17px", color: "#ffffff", lineSpacing: 7, wordWrap: { width: 580 } }));
+        const close = add(this.add.text(400, 505, "Close  [ESC]", { fontSize: "16px", color: "#c8d6e5" }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        close.on("pointerdown", () => this.closePanel());
+        return add;
+    }
+
+    closePanel() {
+        this.panelObjects.forEach(object => object?.destroy?.());
+        this.panelObjects = [];
+        this.panelOpen = false;
+    }
+
+    showBooklet(topic = "linked") {
+        const booklets = {
+            linked: ["LINKED LISTS", "A linked list stores values in nodes connected by pointers.", "Each node contains data and a link to the next node. The head points to the first node; the last node points to NULL.", "Insertion changes links. Traversal follows next pointers until NULL. Lists can grow without moving a whole array."],
+            hash: ["HASH TABLES", "A hash function maps a key to an array index.", "Collisions happen when keys map to the same slot. Linear probing checks later slots until it finds the key or an empty slot.", "Cipher Valley uses this C implementation for inventory item lookup."],
+            stack: ["STACKS", "A stack follows Last In, First Out (LIFO).", "Push adds an item at the top. Pop removes the newest item. Peek reads the top without removing it.", "The campus action history uses a C stack."],
+            queue: ["QUEUES", "A queue follows First In, First Out (FIFO).", "Enqueue adds to the rear. Dequeue removes from the front. A circular queue reuses freed array slots.", "The laboratory task scheduler uses a C circular queue."],
+            tree: ["BINARY SEARCH TREES", "A tree has a root, parent and child links, and leaves with no children.", "In a binary search tree, smaller values go left and larger values go right.", "Inorder traversal visits Left, Root, Right and returns values in sorted order."],
+            debugging: ["DEBUGGING CHECKLIST", "Read the failing behavior and trace its inputs.", "Check boundary conditions, pointer validity, loop progress, and state changes.", "Change the smallest relevant piece, then verify with more than one input."],
+            c: ["C PROGRAMMING", "C gives direct control over data representation and memory.", "A struct groups fields. Pointers refer to objects. Always validate pointers before dereferencing them.", "When using dynamic memory, pair allocations with frees and handle allocation failure."]
+        };
+        const [title, ...paragraphs] = booklets[topic] || booklets.linked;
+        this.showPanel(title, paragraphs.map(p => "• " + p).join("\n\n"));
+    }
+
+    openLabStation() {
+        const campus = this.scene.get("GameScene");
+        const add = this.showPanel("C DSA WORKSTATION", "Run one operation against the compiled C data structures. Each station also has a booklet and a small concept check.");
+        const actions = [
+            ["Linked List", () => this.practiceStructure("linked")],
+            ["Hash Table", () => this.practiceStructure("hash")],
+            ["Stack", () => this.practiceStructure("stack")],
+            ["Queue", () => this.practiceStructure("queue")],
+            ["Binary Tree", () => this.practiceStructure("tree")],
+            ["Read the Booklets", () => this.showBooklet("linked")]
+        ];
+        actions.forEach(([label, callback], index) => {
+            const button = add(this.add.rectangle(400, 225 + index * 45, 390, 34, 0x263746).setStrokeStyle(1, 0x7cffb2).setInteractive({ useHandCursor: true }));
+            const text = add(this.add.text(400, 225 + index * 45, label, { fontSize: "16px", color: "#ffffff" }).setOrigin(0.5));
+            button.on("pointerdown", () => { this.closePanel(); callback(); });
+            text.setInteractive({ useHandCursor: true }).on("pointerdown", () => { this.closePanel(); callback(); });
+        });
+    }
+
+    practiceStructure(kind) {
+        const names = { linked: "Linked List", hash: "Hash Table", stack: "Stack", queue: "Queue", tree: "Binary Search Tree" };
+        const explanations = {
+            linked: "Add a quest node, complete it, then traverse the C list to read its count.",
+            hash: "Insert Lab Token and search the inventory by key in the C hash table.",
+            stack: "Push a lab action, peek at the top, then pop it from the C stack.",
+            queue: "Enqueue a lab task, inspect the front, then process it from the C queue.",
+            tree: "Insert 40, 20, 60, 10, 30 into the C tree and read its inorder traversal."
+        };
+        const add = this.showPanel(names[kind].toUpperCase(), explanations[kind]);
+        const output = add(this.add.text(115, 275, "Run the operation to inspect the C result.", {
+            fontSize: "16px", color: "#b6e5ff", wordWrap: { width: 570 }
+        }));
+        const run = add(this.add.rectangle(400, 350, 300, 42, 0x245b49).setStrokeStyle(2, 0x7cffb2).setInteractive({ useHandCursor: true }));
+        add(this.add.text(400, 350, "Run C operation", { fontSize: "17px", color: "#ffffff" }).setOrigin(0.5));
+        run.on("pointerdown", () => {
+            try {
+                let result = "";
+                if (kind === "linked") {
+                    const id = 9001;
+                    linkedListModule.ccall("addQuest", "number", ["number", "string"], [id, "Lab pointer exercise"]);
+                    linkedListModule.ccall("completeQuest", "number", ["number"], [id]);
+                    result = `C linked-list traversal reports ${linkedListModule.ccall("getQuestCount", "number", [], [])} quest nodes; exercise node ${id} is completed.`;
+                } else if (kind === "hash") {
+                    hashTableModule.ccall("insertItem", null, ["string", "number", "string"], ["Lab Token", 1, "Created at the lab workstation."]);
+                    result = `Hash lookup for Lab Token returns quantity ${hashTableModule.ccall("searchItemQuantity", "number", ["string"], ["Lab Token"])}.`;
+                } else if (kind === "stack") {
+                    stackModule.ccall("stackPush", "number", ["string"], ["Lab: inspect stack top"]);
+                    const top = stackModule.ccall("stackPeekAction", "string", [], []);
+                    const removed = stackModule.ccall("stackPopAction", "string", [], []);
+                    result = `Peek returned “${top}”; pop removed “${removed}”. The newest action is first.`;
+                } else if (kind === "queue") {
+                    queueModule.ccall("queueAddTask", "number", ["string"], ["Run lab task"]);
+                    const front = queueModule.ccall("queuePeekTask", "string", [], []);
+                    const removed = queueModule.ccall("queueProcessNextTask", "string", [], []);
+                    result = `Front was “${front}”; processing removed “${removed}”. The oldest task runs first.`;
+                } else {
+                    treeModule.ccall("treeReset", null, [], []);
+                    [40, 20, 60, 10, 30].forEach(value => treeModule.ccall("treeInsert", "number", ["number"], [value]));
+                    const values = Array.from({ length: treeModule.ccall("treeGetCount", "number", [], []) }, (_, i) => treeModule.ccall("treeGetInorderAt", "number", ["number"], [i]));
+                    result = `C tree traversal returned ${values.join(", ")}. Why does inorder visit left subtree, root, then right subtree?`;
+                }
+                output.setText(result);
+                this.saveInteriorProgress();
+            } catch (error) {
+                output.setText("The C module did not complete the operation. Check the browser console and rebuild the modules.");
+                console.error("C DSA workstation operation failed:", error);
+            }
+        });
+        const booklet = add(this.add.text(400, 420, `Read the ${names[kind]} booklet`, { fontSize: "16px", color: "#7cffb2" }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        booklet.on("pointerdown", () => this.showBooklet(kind));
+    }
+
+    purchaseItem(name, price, description) {
+        if (gameState.coins < price) {
+            this.showMessage(`You need ${price} coins. You have ${gameState.coins}.`);
+            return;
+        }
+        const world = worldModule;
+        const inventory = hashTableModule;
+        if (!world || !inventory) {
+            this.showMessage("The C++ Item or C inventory module is unavailable.");
+            return;
+        }
+        const cppAdded = world.ccall("worldAddItem", "number", ["string", "number", "string"], [name, 1, description]);
+        if (!cppAdded) return this.showMessage("The C++ Item system could not add that item.");
+        inventory.ccall("insertItem", null, ["string", "number", "string"], [name, 1, description]);
+        gameState.coins -= price;
+        this.showMessage(`${name} added to the C++ Item and C hash-table inventories. Coins left: ${gameState.coins}.`);
+        this.saveInteriorProgress();
+    }
+
+    openShop(canteen = false) {
+        const sellerIndex = 2;
+        const greeting = worldModule?.ccall("worldNpcMessage", "string", ["number"], [sellerIndex]) || "Welcome to the campus shop.";
+        const add = this.showPanel(canteen ? "CANTEEN COUNTER" : "CAMPUS SHOP", `${greeting}\n\nYour coins: ${gameState.coins}\nItems are recorded by the C++ Item class and the C hash-table inventory.`);
+        const offers = canteen
+            ? [["Snack", 8, "A canteen snack. Restores 10 energy."], ["Coffee", 12, "Fresh canteen coffee. Restores 20 energy."]]
+            : [["Notebook", 10, "A notebook for recording programming ideas."], ["Energy Drink", 15, "Restores player energy when used."]];
+        offers.forEach((offer, index) => {
+            const y = 315 + index * 55;
+            const button = add(this.add.rectangle(400, y, 390, 40, 0x245b49).setStrokeStyle(1, 0x7cffb2).setInteractive({ useHandCursor: true }));
+            const text = add(this.add.text(400, y, `${offer[0]}  —  ${offer[1]} coins`, { fontSize: "16px", color: "#ffffff" }).setOrigin(0.5));
+            button.on("pointerdown", () => { this.purchaseItem(...offer); this.closePanel(); });
+            text.setInteractive({ useHandCursor: true }).on("pointerdown", () => { this.purchaseItem(...offer); this.closePanel(); });
+        });
+    }
+
+    interact(target) {
+        if (target.action === "exit") {
+            this.saveInteriorProgress();
+            gameState.location = "campus";
+            this.exiting = true;
+            const campus = this.scene.get("GameScene");
+            campus.currentLocation = "campus";
+            campus.recordGameAction(`Left ${this.location}`);
+            campus.saveProgress();
+            this.scene.stop("InteriorScene");
+            this.scene.resume("GameScene");
+            return;
+        }
+        if (target.action === "sleep") {
+            const current = Number(gameState.gameMinutes) || 0;
+            const minutesUntilSix = current < 360 ? 360 - current : 1440 - current + 360;
+            const dayAdvance = Math.floor((current + minutesUntilSix) / 1440);
+            gameState.gameMinutes = 360;
+            gameState.gameDay += Math.max(1, dayAdvance);
+            cppPlayerModule?.ccall("playerRestoreEnergy", null, ["number"], [100]);
+            this.clockText.setText(formatGameClock());
+            this.showMessage("You slept well. It is 6:00 AM and your energy is full.");
+            this.saveInteriorProgress();
+        } else if (target.action === "booklet") {
+            this.showBooklet(this.location === "lab" ? "debugging" : this.location === "library" ? "tree" : "c");
+        } else if (target.action === "labStation") {
+            this.openLabStation();
+        } else if (target.action === "assistant") {
+            const message = worldModule?.ccall("worldNpcMessage", "string", ["number"], [1]) || "The C data-structure workstations are ready.";
+            this.showMessage(message);
+        } else if (target.action === "canteenNpc") {
+            this.showMessage(worldModule?.ccall("worldNpcMessage", "string", ["number"], [2]) || "Fresh food is ready.");
+        } else if (target.action === "canteenShop") {
+            this.openShop(true);
+        } else if (target.action === "shop") {
+            this.openShop(false);
+        }
+    }
+
+    update() {
+        if (this.panelOpen) {
+            this.player.body.setVelocity(0);
+            if (Phaser.Input.Keyboard.JustDown(this.escapeKey)) this.closePanel();
+            return;
+        }
+        this.player.body.setVelocity(0);
+        if (this.keys.A.isDown) this.player.body.setVelocityX(-190);
+        if (this.keys.D.isDown) this.player.body.setVelocityX(190);
+        if (this.keys.W.isDown) this.player.body.setVelocityY(-190);
+        if (this.keys.S.isDown) this.player.body.setVelocityY(190);
+        this.player.body.velocity.normalize().scale(190);
+        updatePlayerAnimation(this.player, this.player.body.velocity.x, this.player.body.velocity.y);
+        const nearest = this.targets.map(target => ({
+            ...target,
+            distance: Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y)
+        })).filter(target => target.distance < 72).sort((a, b) => a.distance - b.distance)[0];
+        this.interactionText.setText(nearest ? `E  ${nearest.label}` : "");
+        if (nearest && Phaser.Input.Keyboard.JustDown(this.interactKey)) this.interact(nearest);
+    }
+}
+
+
+// ==========================================
 // GAME CONFIGURATION
 // ==========================================
 
 const config = {
 
     type: Phaser.AUTO,
+
+    parent: "game-container",
+
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    },
 
     width: 800,
 
@@ -2339,7 +3019,7 @@ const config = {
 
     },
 
-    scene: GameScene
+    scene: [GameScene, InteriorScene]
 
 };
 
