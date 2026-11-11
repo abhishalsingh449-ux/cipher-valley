@@ -17,8 +17,9 @@ function loadGameState() {
     const defaults = {
         version: 1,
         location: "hostel",
-        campusX: 400,
-        campusY: 300,
+        campusX: 600,
+        campusY: 450,
+        campusMapVersion: 2,
         gameMinutes: 360,
         gameDay: 1,
         playerXP: 0,
@@ -50,6 +51,11 @@ function loadGameState() {
         if (!saved || saved.version !== 1) return defaults;
         const location = saved.location === "campus" || INTERIOR_LOCATIONS.includes(saved.location)
             ? saved.location : "campus";
+        const savedMapVersion = Number(saved.campusMapVersion) || 1;
+        const oldCampusX = Number.isFinite(Number(saved.campusX)) ? Number(saved.campusX) : 400;
+        const oldCampusY = Number.isFinite(Number(saved.campusY)) ? Number(saved.campusY) : 300;
+        const campusX = Phaser.Math.Clamp(savedMapVersion >= 2 ? oldCampusX : oldCampusX * 1.5, 25, 1175);
+        const campusY = Phaser.Math.Clamp(savedMapVersion >= 2 ? oldCampusY : oldCampusY * 1.5, 25, 875);
         const interiorPositions = Object.fromEntries(INTERIOR_LOCATIONS.map(room => {
             const fallback = DEFAULT_INTERIOR_POSITIONS[room];
             const position = saved.interiorPositions?.[room];
@@ -70,6 +76,9 @@ function loadGameState() {
             ...defaults,
             ...saved,
             location,
+            campusX,
+            campusY,
+            campusMapVersion: 2,
             interiorPositions,
             debugQuestCompleted: saved.debugQuestCompleted || {},
             labPracticeCompleted: saved.labPracticeCompleted || {},
@@ -474,6 +483,7 @@ class GameScene extends Phaser.Scene {
         );
 
         this.challengeBox.setDepth(20);
+        this.challengeBox.setScrollFactor(0);
 
         // TITLE
         this.dsaTitle = this.add.text(
@@ -488,6 +498,7 @@ class GameScene extends Phaser.Scene {
 
         this.dsaTitle.setOrigin(0.5);
         this.dsaTitle.setDepth(21);
+        this.dsaTitle.setScrollFactor(0);
 
         // SUBTITLE
         this.dsaSubtitle = this.add.text(
@@ -501,6 +512,7 @@ class GameScene extends Phaser.Scene {
 
         this.dsaSubtitle.setOrigin(0.5);
         this.dsaSubtitle.setDepth(21);
+        this.dsaSubtitle.setScrollFactor(0);
 
         // QUESTION
         const question = this.questCompleted
@@ -525,6 +537,7 @@ class GameScene extends Phaser.Scene {
 
         this.questionText.setOrigin(0.5);
         this.questionText.setDepth(21);
+        this.questionText.setScrollFactor(0);
 
         // ANSWER OPTIONS
         this.dsaOptions = [];
@@ -555,6 +568,7 @@ class GameScene extends Phaser.Scene {
 
         this.exitButton.setOrigin(0.5);
         this.exitButton.setDepth(21);
+        this.exitButton.setScrollFactor(0);
         this.exitButton.setInteractive();
 
         this.exitButton.on("pointerover", () => {
@@ -602,6 +616,7 @@ class GameScene extends Phaser.Scene {
 
         option.setOrigin(0.5);
         option.setDepth(21);
+        option.setScrollFactor(0);
         option.setInteractive();
 
         option.correctAnswer = correct;
@@ -1043,10 +1058,10 @@ class GameScene extends Phaser.Scene {
 
     showNpcToast(message) {
         if (!message || !this.add) return;
-        const box = this.add.rectangle(400, 470, 590, 42, 0x10251d, 0.96).setStrokeStyle(1, 0x7cffb2).setDepth(30);
+        const box = this.add.rectangle(400, 470, 590, 42, 0x10251d, 0.96).setStrokeStyle(1, 0x7cffb2).setDepth(30).setScrollFactor(0);
         const text = this.add.text(400, 470, message, {
             fontSize: "15px", color: "#ffffff", align: "center", wordWrap: { width: 560 }
-        }).setOrigin(0.5).setDepth(31);
+        }).setOrigin(0.5).setDepth(31).setScrollFactor(0);
         this.time.delayedCall(2600, () => { box.destroy(); text.destroy(); });
     }
 
@@ -1104,7 +1119,7 @@ class GameScene extends Phaser.Scene {
         this.integrationPanelOpen = true;
         this.player.body.setVelocity(0);
         this.integrationPanelObjects = [];
-        const add = (obj) => { obj.setDepth(60); this.integrationPanelObjects.push(obj); return obj; };
+        const add = (obj) => { obj.setDepth(60).setScrollFactor(0); this.integrationPanelObjects.push(obj); return obj; };
         add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
         const isHistory = kind === "history";
         add(this.add.text(400, 55, isHistory ? "ACTION HISTORY — C STACK" : "PENDING TASKS — C CIRCULAR QUEUE", {
@@ -1161,7 +1176,7 @@ class GameScene extends Phaser.Scene {
 
         this.inventoryObjects = [];
         const add = (obj) => {
-            obj.setDepth(40);
+            obj.setDepth(40).setScrollFactor(0);
             this.inventoryObjects.push(obj);
             return obj;
         };
@@ -1303,7 +1318,7 @@ class GameScene extends Phaser.Scene {
         this.questDialogueObjects = [];
 
         const add = (obj) => {
-            obj.setDepth(60);
+            obj.setDepth(60).setScrollFactor(0);
             this.questDialogueObjects.push(obj);
             return obj;
         };
@@ -1622,7 +1637,8 @@ class GameScene extends Phaser.Scene {
             Phaser.Input.Keyboard.KeyCodes.S,
             Phaser.Input.Keyboard.KeyCodes.D,
             Phaser.Input.Keyboard.KeyCodes.E,
-            Phaser.Input.Keyboard.KeyCodes.I
+            Phaser.Input.Keyboard.KeyCodes.I,
+            Phaser.Input.Keyboard.KeyCodes.T
         ];
         this.input.keyboard.removeCapture(this.coffeeReleasedKeyCapture);
         this.interactionBox.setVisible(false);
@@ -1630,7 +1646,7 @@ class GameScene extends Phaser.Scene {
         this.coffeeOverlayElements = [];
 
         const add = (obj) => {
-            obj.setDepth(80);
+            obj.setDepth(80).setScrollFactor(0);
             this.coffeeOverlayElements.push(obj);
             return obj;
         };
@@ -1833,32 +1849,36 @@ class GameScene extends Phaser.Scene {
 
     create() {
         ensureCharacterAnimations(this);
+        const mx = value => value * 1.5;
+        const my = value => value * 1.5;
+        const ms = value => value * 1.15;
+        this.physics.world.setBounds(0, 0, 1200, 900);
 
         // CAMPUS BACKGROUND
         this.campusBackground = this.add.rectangle(
-            400, 300, 800, 600,
+            600, 450, 1200, 900,
             0x3a7d44
         );
 
         // CAMPUS PATHS
         this.add.rectangle(
-            400, 300, 800, 70,
+            600, 480, 1200, 123,
             0xc2a878
         );
 
         this.add.rectangle(
-            500, 300, 70, 600,
+            750, 480, 123, 900,
             0xc2a878
         );
 
         // PROGRAMMING LAB
         this.lab = this.add.rectangle(
-            200, 150, 220, 120,
+            mx(180), my(150), ms(200), ms(108),
             0x555555
         );
 
         this.add.text(
-            125, 135,
+            mx(105), my(135),
             "PROGRAMMING LAB",
             {
                 fontSize: "18px",
@@ -1868,12 +1888,12 @@ class GameScene extends Phaser.Scene {
 
         // HOSTEL
         this.hostel = this.add.rectangle(
-            650, 150, 180, 120,
+            mx(660), my(150), ms(166), ms(108),
             0x8b5a2b
         );
 
         this.add.text(
-            600, 135,
+            mx(615), my(135),
             "HOSTEL",
             {
                 fontSize: "18px",
@@ -1881,35 +1901,35 @@ class GameScene extends Phaser.Scene {
             }
         );
 
-        this.hostelDoor = this.add.circle(650, 226, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.labDoor = this.add.circle(200, 226, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.hostelDoor = this.add.circle(mx(660), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.labDoor = this.add.circle(mx(180), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
 
         // Additional campus facilities with their own playable interiors.
-        this.library = this.add.rectangle(130, 455, 155, 100, 0x7056a5).setStrokeStyle(3, 0xd8c7ff);
-        this.add.text(83, 445, "LIBRARY", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
-        this.libraryDoor = this.add.circle(130, 512, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.canteen = this.add.rectangle(400, 455, 155, 100, 0xb95e36).setStrokeStyle(3, 0xffd3a8);
-        this.add.text(356, 445, "CANTEEN", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
-        this.canteenDoor = this.add.circle(400, 512, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.campusShop = this.add.rectangle(670, 500, 155, 85, 0x376a87).setStrokeStyle(3, 0xb6e5ff);
-        this.add.text(630, 480, "CAMPUS SHOP", { fontSize: "14px", color: "#ffffff", fontStyle: "bold" });
-        this.shopDoor = this.add.circle(670, 552, 8, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.treeGarden = this.add.rectangle(400, 105, 170, 70, 0x2c6e49).setStrokeStyle(2, 0x8be0a6);
-        this.add.text(345, 97, "TREE GARDEN", { fontSize: "15px", color: "#ffffff", fontStyle: "bold" });
-        [315, 350, 455, 490].forEach(x => this.add.circle(x, 95, 12, 0x174f2b).setStrokeStyle(2, 0x80c783));
-        [[70, 100], [80, 325], [285, 510], [520, 510], [590, 260]].forEach(([x, y]) => {
-            this.add.circle(x, y, 15, 0x245b36).setStrokeStyle(2, 0x9acb72);
-            this.add.rectangle(x, y + 20, 6, 15, 0x72512e);
+        this.library = this.add.rectangle(mx(115), my(475), ms(140), ms(90), 0x7056a5).setStrokeStyle(3, 0xd8c7ff);
+        this.add.text(mx(76), my(465), "LIBRARY", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
+        this.libraryDoor = this.add.circle(mx(115), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.canteen = this.add.rectangle(mx(400), my(475), ms(140), ms(90), 0xb95e36).setStrokeStyle(3, 0xffd3a8);
+        this.add.text(mx(360), my(465), "CANTEEN", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
+        this.canteenDoor = this.add.circle(mx(400), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.campusShop = this.add.rectangle(mx(685), my(490), ms(140), ms(78), 0x376a87).setStrokeStyle(3, 0xb6e5ff);
+        this.add.text(mx(647), my(471), "CAMPUS SHOP", { fontSize: "14px", color: "#ffffff", fontStyle: "bold" });
+        this.shopDoor = this.add.circle(mx(685), my(539), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
+        this.treeGarden = this.add.rectangle(mx(400), my(105), ms(170), ms(70), 0x2c6e49).setStrokeStyle(2, 0x8be0a6);
+        this.add.text(mx(345), my(97), "TREE GARDEN", { fontSize: "15px", color: "#ffffff", fontStyle: "bold" });
+        [315, 350, 455, 490].forEach(x => this.add.circle(mx(x), my(95), 15, 0x174f2b).setStrokeStyle(2, 0x80c783));
+        [[65, 105], [70, 350], [270, 545], [545, 545], [745, 245], [745, 575]].forEach(([x, y]) => {
+            this.add.circle(mx(x), my(y), 18, 0x245b36).setStrokeStyle(2, 0x9acb72);
+            this.add.rectangle(mx(x), my(y + 20), 8, 18, 0x72512e);
         });
-        [[300, 385], [520, 385]].forEach(([x, y]) => {
-            this.add.rectangle(x, y, 62, 11, 0x8d6748).setStrokeStyle(2, 0x533f32);
-            this.add.rectangle(x, y + 12, 52, 5, 0x614832);
+        [[285, 410], [535, 410]].forEach(([x, y]) => {
+            this.add.rectangle(mx(x), my(y), 72, 13, 0x8d6748).setStrokeStyle(2, 0x533f32);
+            this.add.rectangle(mx(x), my(y + 12), 60, 6, 0x614832);
         });
 
         // PLAYER
         this.player = this.add.sprite(
-            Phaser.Math.Clamp(Number(gameState.campusX) || 400, 25, 775),
-            Phaser.Math.Clamp(Number(gameState.campusY) || 300, 25, 575),
+            Phaser.Math.Clamp(Number(gameState.campusX) || 600, 25, 1175),
+            Phaser.Math.Clamp(Number(gameState.campusY) || 450, 25, 875),
             "cv-player", "d0f0"
         ).setDisplaySize(40, 48);
         activeGameScene = this;
@@ -1919,12 +1939,14 @@ class GameScene extends Phaser.Scene {
 
         this.player.body.setCollideWorldBounds(true);
         this.player.body.setSize(22, 20).setOffset(5, 24);
+        this.cameras.main.setBounds(0, 0, 1200, 900);
+        this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
         // MENTOR NPC
-        this.npc = this.add.sprite(600, 350, "cv-mentor", "d0f0").setDisplaySize(38, 48);
+        this.npc = this.add.sprite(mx(600), my(350), "cv-mentor", "d0f0").setDisplaySize(42, 52);
 
         this.add.text(
-            570, 375,
+            mx(570), my(375),
             "MENTOR",
             {
                 fontSize: "16px",
@@ -1933,26 +1955,26 @@ class GameScene extends Phaser.Scene {
         );
 
         // LAB ASSISTANT — backed by the C++ LabAssistant class.
-        this.labAssistant = this.add.sprite(330, 220, "cv-assistant", "d0f0").setDisplaySize(34, 44);
-        this.add.text(292, 241, "LAB ASSISTANT", {
+        this.labAssistant = this.add.sprite(mx(290), my(245), "cv-assistant", "d0f0").setDisplaySize(38, 48);
+        this.add.text(mx(252), my(266), "LAB ASSISTANT", {
             fontSize: "11px", color: "#ffffff", fontStyle: "bold"
         });
 
         // FRIEND NPC — introduces the mandatory opening quest.
-        this.friend = this.add.sprite(330, 300, "cv-friend", "d0f0").setDisplaySize(36, 46);
-        this.add.text(300, 325, "FRIEND", {
+        this.friend = this.add.sprite(mx(360), my(400), "cv-friend", "d0f0").setDisplaySize(40, 50);
+        this.add.text(mx(330), my(425), "FRIEND", {
             fontSize: "14px", color: "#ffffff"
         });
 
         // VENDING MACHINE — major interactive object with a real code-repair challenge.
-        this.vendingMachine = this.add.rectangle(700, 390, 58, 78, 0x273746)
+        this.vendingMachine = this.add.rectangle(mx(735), my(330), 68, 92, 0x273746)
             .setStrokeStyle(3, 0x57cc99);
-        this.add.rectangle(700, 377, 38, 28, 0x5dade2);
-        this.add.rectangle(700, 410, 38, 20, 0x17202a);
-        this.add.text(665, 440, "VENDING", {
+        this.add.rectangle(mx(735), my(317), 44, 32, 0x5dade2);
+        this.add.rectangle(mx(735), my(350), 44, 24, 0x17202a);
+        this.add.text(mx(700), my(380), "VENDING", {
             fontSize: "14px", color: "#ffffff", fontStyle: "bold"
         });
-        this.vendingStatus = this.add.text(660, 455, this.coffeeQuestCompleted ? "ONLINE" : "ERROR", {
+        this.vendingStatus = this.add.text(mx(695), my(395), this.coffeeQuestCompleted ? "ONLINE" : "ERROR", {
             fontSize: "12px", color: this.coffeeQuestCompleted ? "#7dffb3" : "#ff7777", fontStyle: "bold"
         });
 
@@ -1994,7 +2016,7 @@ class GameScene extends Phaser.Scene {
         });
 
         // INTERACTION SETTINGS
-        this.interactionDistance = 80;
+        this.interactionDistance = 120;
 
         this.interactKey = this.input.keyboard.addKey(
             Phaser.Input.Keyboard.KeyCodes.E
@@ -2015,6 +2037,7 @@ class GameScene extends Phaser.Scene {
             .setStrokeStyle(2, 0x79d7bf);
         this.interactionBox.setAlpha(0.94);
         this.interactionBox.setDepth(10);
+        this.interactionBox.setScrollFactor(0);
 
         // INTERACTION TEXT
         this.interactionText = this.add.text(
@@ -2028,6 +2051,7 @@ class GameScene extends Phaser.Scene {
 
         this.interactionText.setOrigin(0.5);
         this.interactionText.setDepth(11);
+        this.interactionText.setScrollFactor(0);
 
         this.interactionBox.setVisible(false);
         this.interactionText.setVisible(false);
@@ -2035,6 +2059,7 @@ class GameScene extends Phaser.Scene {
         // Compact RPG-style HUD panels keep quest and player status readable
         // without covering the center of the campus.
         this.hudPanels = this.add.graphics().setDepth(4);
+        this.hudPanels.setScrollFactor(0);
         this.hudPanels.fillStyle(0x112333, 0.94);
         this.hudPanels.fillRoundedRect(8, 8, 320, 246, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
@@ -2056,6 +2081,7 @@ class GameScene extends Phaser.Scene {
         );
 
         this.questStatusText.setDepth(5);
+        this.questStatusText.setScrollFactor(0);
 
         // XP HUD
         this.xpText = this.add.text(
@@ -2069,6 +2095,7 @@ class GameScene extends Phaser.Scene {
         );
 
         this.xpText.setDepth(5);
+        this.xpText.setScrollFactor(0);
 
         this.notebookQuestStatusText = this.add.text(
             22, 88,
@@ -2079,21 +2106,25 @@ class GameScene extends Phaser.Scene {
             }
         );
         this.notebookQuestStatusText.setDepth(5);
+        this.notebookQuestStatusText.setScrollFactor(0);
 
         this.inventoryHintText = this.add.text(22, 120, "I  ·  INVENTORY", {
             fontSize: "12px", color: "#c6d5e1"
         });
         this.inventoryHintText.setDepth(5);
+        this.inventoryHintText.setScrollFactor(0);
 
         this.treeHintText = this.add.text(22, 183, "T  ·  TREE TRAINING", {
             fontSize: "12px", color: "#9cebd3"
         });
         this.treeHintText.setDepth(5);
+        this.treeHintText.setScrollFactor(0);
 
         this.integrationHintText = this.add.text(22, 215, "H History   Q Tasks   B Quests", {
             fontSize: "11px", color: "#c6d5e1"
         });
         this.integrationHintText.setDepth(5);
+        this.integrationHintText.setScrollFactor(0);
         this.historyKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
         this.taskQueueKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
         this.integrationExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -2105,6 +2136,7 @@ class GameScene extends Phaser.Scene {
             fontSize: "14px", color: "#fff4d6", fontStyle: "bold"
         });
         this.gameClockText.setDepth(5);
+        this.gameClockText.setScrollFactor(0);
         this.gameClockListener = (timeText) => {
             this.gameMinutes = gameState.gameMinutes;
             this.gameDay = gameState.gameDay;
@@ -2118,6 +2150,7 @@ class GameScene extends Phaser.Scene {
             fontSize: "12px", color: "#e7eff6"
         });
         this.coffeeQuestStatusText.setDepth(5);
+        this.coffeeQuestStatusText.setScrollFactor(0);
 
         this.playerStatsText = this.add.text(515, 20, "PLAYER  ·  Loading…", {
             fontSize: "13px",
@@ -2125,6 +2158,7 @@ class GameScene extends Phaser.Scene {
             lineSpacing: 5
         });
         this.playerStatsText.setDepth(5);
+        this.playerStatsText.setScrollFactor(0);
         cppPlayerReady.then((module) => {
             if (module) this.syncPlayerStats();
             else if (this.playerStatsText) this.playerStatsText.setText("C++ Player module unavailable");
@@ -2146,11 +2180,51 @@ class GameScene extends Phaser.Scene {
             gameClockListeners.delete(this.gameClockListener);
             if (activeGameScene === this) activeGameScene = null;
         });
+        this.createMiniMap();
         this.saveProgress();
         if (gameState.location !== "campus") {
             this.interiorActive = true;
+            this.minimapPanel.setVisible(false);
+            this.minimapGraphic.setVisible(false);
             this.scene.launch("InteriorScene", { location: gameState.location });
         }
+    }
+
+    createMiniMap() {
+        this.minimapPanel = this.add.rectangle(700, 199, 184, 136, 0x112333, 0.96)
+            .setStrokeStyle(2, 0x5cc7b2).setDepth(6).setScrollFactor(0);
+        this.minimapLabel = this.add.text(618, 134, "CAMPUS MAP", {
+            fontSize: "11px", color: "#9cebd3", fontStyle: "bold"
+        }).setDepth(7).setScrollFactor(0);
+        this.minimapGraphic = this.add.graphics().setDepth(7).setScrollFactor(0);
+        this.minimapLayout = { x: 618, y: 151, width: 164, height: 96 };
+        this.updateMiniMap();
+    }
+
+    updateMiniMap() {
+        if (!this.minimapGraphic || !this.player) return;
+        const g = this.minimapGraphic;
+        const { x, y, width, height } = this.minimapLayout;
+        const point = (worldX, worldY) => ({
+            x: x + Phaser.Math.Clamp(worldX / 1200, 0, 1) * width,
+            y: y + Phaser.Math.Clamp(worldY / 900, 0, 1) * height
+        });
+        g.clear();
+        g.fillStyle(0x29434b, 1).fillRoundedRect(x, y, width, height, 5);
+        g.lineStyle(6, 0xc2a878, 1);
+        g.lineBetween(x, y + height * 0.533, x + width, y + height * 0.533);
+        g.lineBetween(x + width * 0.625, y, x + width * 0.625, y + height);
+        const places = [
+            [270, 225, 0xb5b5b5], [990, 225, 0x8b5a2b], [172.5, 712.5, 0x9a79cc],
+            [600, 712.5, 0xd77a4c], [1027.5, 735, 0x65a4c6], [600, 157.5, 0x55a870]
+        ];
+        places.forEach(([worldX, worldY, color]) => {
+            const p = point(worldX, worldY);
+            g.fillStyle(color, 1).fillRoundedRect(p.x - 4, p.y - 3, 8, 6, 2);
+        });
+        const playerPoint = point(this.player.x, this.player.y);
+        g.fillStyle(0xffd166, 1).fillCircle(playerPoint.x, playerPoint.y, 4);
+        g.lineStyle(1, 0xffffff, 1).strokeCircle(playerPoint.x, playerPoint.y, 4);
     }
 
     saveProgress() {
@@ -2158,6 +2232,7 @@ class GameScene extends Phaser.Scene {
             gameState.campusX = this.player.x;
             gameState.campusY = this.player.y;
         }
+        gameState.campusMapVersion = 2;
         gameState.questCompleted = !!this.questCompleted;
         gameState.coffeeQuestAccepted = !!this.coffeeQuestAccepted;
         gameState.coffeeQuestCompleted = !!this.coffeeQuestCompleted;
@@ -2228,7 +2303,7 @@ class GameScene extends Phaser.Scene {
         if (Object.keys(this.debugQuestCompleted).length < 4) this.enqueueGameTask("Complete a debugging side quest");
         this.debugQuestObjects = [];
         const add = (obj) => {
-            obj.setDepth(120);
+            obj.setDepth(120).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
@@ -2274,7 +2349,7 @@ class GameScene extends Phaser.Scene {
         this.debugQuestObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
         this.debugQuestObjects = [];
         const add = (obj) => {
-            obj.setDepth(125);
+            obj.setDepth(125).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
@@ -2339,7 +2414,7 @@ class GameScene extends Phaser.Scene {
         this.player.body.setVelocity(0);
         this.treeChallengeObjects = [];
 
-        const add = (obj) => { this.treeChallengeObjects.push(obj); return obj; };
+        const add = (obj) => { obj.setScrollFactor(0); this.treeChallengeObjects.push(obj); return obj; };
         add(this.add.rectangle(400, 300, 720, 520, 0x101820, 0.97).setStrokeStyle(3, 0x57cc99).setDepth(100));
         add(this.add.text(400, 65, "TREE TRAINING — BINARY SEARCH TREE", {
             fontSize: "24px", color: "#7CFFB2", fontStyle: "bold", align: "center"
@@ -2420,6 +2495,9 @@ class GameScene extends Phaser.Scene {
         if (gameState.location !== "campus" || !INTERIOR_LOCATIONS.includes(location)) return;
         this.currentLocation = location;
         this.interiorActive = true;
+        this.minimapPanel?.setVisible(false);
+        this.minimapLabel?.setVisible(false);
+        this.minimapGraphic?.setVisible(false);
         this.interactionBox?.setVisible(false);
         this.interactionText?.setVisible(false);
         gameState.location = location;
@@ -2434,6 +2512,7 @@ class GameScene extends Phaser.Scene {
 
     update() {
 
+        if (this.minimapPanel?.visible && !this.interiorActive) this.updateMiniMap();
         if (this.interiorActive) {
             this.player.body.setVelocity(0);
             this.interactionBox?.setVisible(false);
@@ -2487,6 +2566,7 @@ class GameScene extends Phaser.Scene {
         // Code-repair overlay pauses normal gameplay while open.
         if (this.coffeeChallengeOpen) {
             this.player.body.setVelocity(0);
+            if (this.treeKey) Phaser.Input.Keyboard.JustDown(this.treeKey);
             return;
         }
 
@@ -2668,6 +2748,16 @@ class InteriorScene extends Phaser.Scene {
     }
 
     init(data) {
+        // Phaser reuses this Scene instance after stop()/launch(). Reset all
+        // room-lifetime state so a prior return cannot lock out later exits.
+        this.exiting = false;
+        this.targets = [];
+        this.solids = [];
+        this.panelObjects = [];
+        this.panelOpen = false;
+        this.messageText = null;
+        this.messageTimer = null;
+        this.saveTimer = null;
         this.location = INTERIOR_LOCATIONS.includes(data?.location)
             ? data.location : "hostel";
         const savedPosition = gameState.interiorPositions?.[this.location] || DEFAULT_INTERIOR_POSITIONS[this.location];
@@ -2713,10 +2803,10 @@ class InteriorScene extends Phaser.Scene {
 
         // Keep a visible, direct way back in every room. This avoids trapping
         // the player if they miss the door marker or load beside furniture.
-        this.returnButton = this.add.rectangle(674, 112, 144, 34, 0x245b49)
+        this.returnButton = this.add.rectangle(680, 112, 184, 38, 0x245b49)
             .setStrokeStyle(2, 0x9be7b0).setInteractive({ useHandCursor: true }).setDepth(10);
-        this.returnButtonLabel = this.add.text(674, 112, "← CAMPUS  [X / ESC]", {
-            fontSize: "14px", color: "#ffffff", fontStyle: "bold"
+        this.returnButtonLabel = this.add.text(680, 112, "← RETURN TO CAMPUS", {
+            fontSize: "12px", color: "#ffffff", fontStyle: "bold"
         }).setOrigin(0.5).setDepth(11);
         this.returnButton.on("pointerdown", () => this.returnToCampus());
         this.returnButtonLabel.setInteractive({ useHandCursor: true })
@@ -2737,6 +2827,12 @@ class InteriorScene extends Phaser.Scene {
             else this.returnToCampus();
         });
         this.input.keyboard.on("keydown-X", () => this.returnToCampus());
+        this.returnShortcutHandler = event => {
+            if (event.key?.toLowerCase() !== "x" || this.exiting) return;
+            event.preventDefault();
+            this.returnToCampus();
+        };
+        globalThis.window?.addEventListener("keydown", this.returnShortcutHandler, true);
         this.interactionText = this.add.text(400, 525, "", {
             fontSize: "17px", color: "#ffffff", backgroundColor: "#17212b", padding: { x: 9, y: 6 }
         }).setOrigin(0.5);
@@ -2745,6 +2841,7 @@ class InteriorScene extends Phaser.Scene {
         }).setOrigin(0.5);
         this.saveTimer = this.time.addEvent({ delay: 1000, callback: this.saveInteriorProgress, callbackScope: this, loop: true });
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            globalThis.window?.removeEventListener("keydown", this.returnShortcutHandler, true);
             gameClockListeners.delete(this.clockListener);
             this.saveInteriorProgress();
         });
@@ -3036,8 +3133,8 @@ class InteriorScene extends Phaser.Scene {
 
     returnToCampus() {
         if (this.exiting) return;
-        this.saveInteriorProgress();
         this.exiting = true;
+        this.saveInteriorProgress();
         gameState.location = "campus";
         const campus = this.scene.get("GameScene");
         if (campus) {
@@ -3046,6 +3143,9 @@ class InteriorScene extends Phaser.Scene {
             if (campus.interactKey) Phaser.Input.Keyboard.JustDown(campus.interactKey);
             campus.currentLocation = "campus";
             campus.interiorActive = false;
+            campus.minimapPanel?.setVisible(true);
+            campus.minimapLabel?.setVisible(true);
+            campus.minimapGraphic?.setVisible(true);
             campus.suppressNextInteraction = true;
             campus.recordGameAction(`Left ${this.location}`);
             campus.saveProgress();
