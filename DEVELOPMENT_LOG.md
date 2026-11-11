@@ -21,3 +21,7 @@
 - Browser gameplay walkthrough verified fresh hostel start, sleep, interior entry and exit, computer interaction, campus movement, Coffee Crisis completion through the compiled C vending module, quest reward, and saved progression after reload.
 - Fixed scene resumption after leaving an interior; confirmed campus movement and interaction work on return.
 - Updated README with build, local HTTP serving, controls, architecture, and prototype limitations.
+- Follow-up fix: added an always-visible interior **← CAMPUS [ESC]** button and direct Escape return, with a shared guarded exit handler. Verified both button and keyboard routes return the player to campus.
+- Added a `game.js` cache-busting query to the HTML script URL so browsers load updated gameplay code during local iteration.
+- Fixed the room-exit E input leaking into campus interactions, validated and clamped saved room positions, and aligned the canteen counter with its keeper.
+- Added an X shortcut to return to campus from anywhere inside an interior, including the lab, and updated the on-screen control hint.

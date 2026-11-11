@@ -4,6 +4,14 @@
 // C++ PLAYER MODULE
 // ==========================================
 const SAVE_KEY = "cipher-valley-save-v1";
+const INTERIOR_LOCATIONS = ["hostel", "lab", "library", "canteen", "shop"];
+const DEFAULT_INTERIOR_POSITIONS = {
+    hostel: { x: 400, y: 450 },
+    lab: { x: 190, y: 310 },
+    library: { x: 500, y: 230 },
+    canteen: { x: 400, y: 250 },
+    shop: { x: 400, y: 260 }
+};
 
 function loadGameState() {
     const defaults = {
@@ -18,6 +26,7 @@ function loadGameState() {
         coins: 50,
         interiorX: 260,
         interiorY: 300,
+        interiorPositions: DEFAULT_INTERIOR_POSITIONS,
         questCompleted: false,
         coffeeQuestAccepted: false,
         coffeeQuestCompleted: false,
@@ -39,9 +48,29 @@ function loadGameState() {
     try {
         const saved = JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || "null");
         if (!saved || saved.version !== 1) return defaults;
+        const location = saved.location === "campus" || INTERIOR_LOCATIONS.includes(saved.location)
+            ? saved.location : "campus";
+        const interiorPositions = Object.fromEntries(INTERIOR_LOCATIONS.map(room => {
+            const fallback = DEFAULT_INTERIOR_POSITIONS[room];
+            const position = saved.interiorPositions?.[room];
+            const coordinate = (value, min, max, safeValue) => Number.isFinite(Number(value))
+                ? Phaser.Math.Clamp(Number(value), min, max)
+                : safeValue;
+            return [room, {
+                x: coordinate(position?.x, 45, 755, fallback.x),
+                y: coordinate(position?.y, 65, 525, fallback.y)
+            }];
+        }));
+        if (!saved.interiorPositions && INTERIOR_LOCATIONS.includes(location)) {
+            // Old saves shared one coordinate between all rooms. Start the
+            // currently open room at its safe, room-specific spawn instead.
+            interiorPositions[location] = { ...DEFAULT_INTERIOR_POSITIONS[location] };
+        }
         return {
             ...defaults,
             ...saved,
+            location,
+            interiorPositions,
             debugQuestCompleted: saved.debugQuestCompleted || {},
             labPracticeCompleted: saved.labPracticeCompleted || {},
             inventory: saved.inventory || {},
@@ -811,7 +840,7 @@ class GameScene extends Phaser.Scene {
             this.dsaXP = this.playerTotalXP;
             if (this.playerStatsText) {
                 this.playerStatsText.setText(
-                    "LEVEL " + this.playerLevel + "  |  XP " + this.playerTotalXP + "\nENERGY " + this.playerEnergy + "/100  |  Hold SHIFT to sprint"
+                    "LEVEL " + this.playerLevel + "   ·   XP " + this.playerTotalXP + "\nENERGY  " + this.playerEnergy + "/100   ·   SHIFT sprint"
                 );
             }
         } catch (error) {
@@ -853,37 +882,35 @@ class GameScene extends Phaser.Scene {
         if (this.questStatusText) {
             this.questStatusText.setText(
                 !this.coffeeQuestCompleted
-                    ? "Main Quest: Coffee Crisis — " + (this.coffeeQuestAccepted ? "ACTIVE" : "START HERE")
+                    ? "STORY QUEST · COFFEE CRISIS"
                     : this.questCompleted
-                        ? "Quest: Linked List — COMPLETED"
-                        : "Quest: Linked List — ACTIVE"
+                        ? "CAMPUS QUESTS · COMPLETE"
+                        : "CAMPUS QUESTS · LINKED LIST"
             );
         }
         if (this.coffeeQuestStatusText) {
             this.coffeeQuestStatusText.setText(
                 this.coffeeQuestCompleted
-                    ? "Coffee Crisis: COMPLETED"
+                    ? "Coffee Crisis · Complete"
                     : this.coffeeQuestAccepted
-                        ? "Coffee Crisis: Repair the vending machine"
-                        : "Coffee Crisis: Talk to your friend"
+                        ? "Next · Repair the vending machine"
+                        : "Next · Talk to your friend"
             );
         }
 
         if (this.xpText) {
 
-            this.xpText.setText(
-                "Total XP: " + this.dsaXP
-            );
+            this.xpText.setText("XP  " + this.dsaXP);
 
         }
 
         if (this.notebookQuestStatusText) {
             this.notebookQuestStatusText.setText(
                 this.notebookQuestCompleted
-                    ? "Quest: Notebook — COMPLETED"
+                    ? "Notebook · Complete"
                     : this.notebookQuestAccepted
-                        ? "Quest: Notebook — ACTIVE"
-                        : "Quest: Notebook — LOCKED"
+                        ? "Notebook · Active"
+                        : "Notebook · Locked"
             );
         }
 
@@ -1340,7 +1367,7 @@ class GameScene extends Phaser.Scene {
     showNotebookQuestOffer() {
         this.showQuestDialogue(
             "MENTOR: THE MISSING NOTEBOOK",
-            "I need a notebook for our next DSA lesson. Visit the campus shop, collect one, then return to me.",
+            "I need a notebook for our next DSA lesson. Visit the campus shop, talk to the Shopkeeper, collect one, then return to me.",
             [
                 {
                     label: "Accept Quest",
@@ -1352,7 +1379,7 @@ class GameScene extends Phaser.Scene {
                         this.updateQuestHUD();
                         this.showQuestDialogue(
                             "QUEST ACCEPTED",
-                            "Find the Shopkeeper, press E, and collect a Notebook. Return to the Mentor afterward.",
+                            "Enter the campus shop, press E near the counter, and collect a Notebook from the Shopkeeper. Return to the Mentor afterward.",
                             [{ label: "Let's go!", callback: () => {} }]
                         );
                     }
@@ -1446,7 +1473,7 @@ class GameScene extends Phaser.Scene {
             } else {
                 this.showQuestDialogue(
                     "NOTEBOOK STILL NEEDED",
-                    "You haven't collected a Notebook yet. Visit the Shopkeeper, press E, and collect one from the campus shop.",
+                    "You haven't collected a Notebook yet. Visit the campus shop and collect one from the Shopkeeper.",
                     [{ label: "Got it", callback: () => {} }]
                 );
             }
@@ -1905,18 +1932,6 @@ class GameScene extends Phaser.Scene {
             }
         );
 
-        // SHOPKEEPER NPC — Notebook quest item source
-        this.shopkeeper = this.add.sprite(200, 400, "cv-shopkeeper", "d0f0").setDisplaySize(38, 48);
-
-        this.add.text(
-            150, 425,
-            "SHOPKEEPER",
-            {
-                fontSize: "15px",
-                color: "#ffffff"
-            }
-        );
-
         // LAB ASSISTANT — backed by the C++ LabAssistant class.
         this.labAssistant = this.add.sprite(330, 220, "cv-assistant", "d0f0").setDisplaySize(34, 44);
         this.add.text(292, 241, "LAB ASSISTANT", {
@@ -1953,7 +1968,6 @@ class GameScene extends Phaser.Scene {
 
         // NPC PHYSICS
         this.physics.add.existing(this.npc, true);
-        this.physics.add.existing(this.shopkeeper, true);
         this.physics.add.existing(this.friend, true);
         this.physics.add.existing(this.labAssistant, true);
         this.physics.add.existing(this.vendingMachine, true);
@@ -1966,7 +1980,6 @@ class GameScene extends Phaser.Scene {
         this.physics.add.collider(this.player, this.campusShop);
         this.physics.add.collider(this.player, this.treeGarden);
         this.physics.add.collider(this.player, this.npc);
-        this.physics.add.collider(this.player, this.shopkeeper);
         this.physics.add.collider(this.player, this.friend);
         this.physics.add.collider(this.player, this.labAssistant);
         this.physics.add.collider(this.player, this.vendingMachine);
@@ -1998,20 +2011,18 @@ class GameScene extends Phaser.Scene {
         this.debugQuestExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
         // INTERACTION BACKGROUND
-        this.interactionBox = this.add.rectangle(
-            400, 520, 300, 55,
-            0x000000
-        );
-
-        this.interactionBox.setAlpha(0.85);
+        this.interactionBox = this.add.rectangle(400, 520, 320, 50, 0x122331)
+            .setStrokeStyle(2, 0x79d7bf);
+        this.interactionBox.setAlpha(0.94);
         this.interactionBox.setDepth(10);
 
         // INTERACTION TEXT
         this.interactionText = this.add.text(
             400, 520, "",
             {
-                fontSize: "20px",
-                color: "#ffffff"
+                fontSize: "17px",
+                color: "#fff4d6",
+                fontStyle: "bold"
             }
         );
 
@@ -2021,18 +2032,26 @@ class GameScene extends Phaser.Scene {
         this.interactionBox.setVisible(false);
         this.interactionText.setVisible(false);
 
+        // Compact RPG-style HUD panels keep quest and player status readable
+        // without covering the center of the campus.
+        this.hudPanels = this.add.graphics().setDepth(4);
+        this.hudPanels.fillStyle(0x112333, 0.94);
+        this.hudPanels.fillRoundedRect(8, 8, 320, 246, 14);
+        this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
+        this.hudPanels.strokeRoundedRect(8, 8, 320, 246, 14);
+        this.hudPanels.fillStyle(0x112333, 0.94);
+        this.hudPanels.fillRoundedRect(500, 8, 292, 110, 14);
+        this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
+        this.hudPanels.strokeRoundedRect(500, 8, 292, 110, 14);
+
         // QUEST STATUS HUD
         this.questStatusText = this.add.text(
-            15, 15,
-            "Quest: Linked List — ACTIVE",
+            22, 20,
+            "STORY QUEST · COFFEE CRISIS",
             {
-                fontSize: "16px",
-                color: "#ffffff",
-                backgroundColor: "#000000",
-                padding: {
-                    x: 8,
-                    y: 6
-                }
+                fontSize: "14px",
+                color: "#9cebd3",
+                fontStyle: "bold"
             }
         );
 
@@ -2040,47 +2059,39 @@ class GameScene extends Phaser.Scene {
 
         // XP HUD
         this.xpText = this.add.text(
-            15, 55,
-            "Total XP: 0",
+            22, 55,
+            "XP 0",
             {
-                fontSize: "16px",
-                color: "#ffffff",
-                backgroundColor: "#000000",
-                padding: {
-                    x: 8,
-                    y: 6
-                }
+                fontSize: "14px",
+                color: "#ffd166",
+                fontStyle: "bold"
             }
         );
 
         this.xpText.setDepth(5);
 
         this.notebookQuestStatusText = this.add.text(
-            15, 95,
+            22, 88,
             "Quest: Notebook — LOCKED",
             {
-                fontSize: "16px",
-                color: "#ffffff",
-                backgroundColor: "#000000",
-                padding: { x: 8, y: 6 }
+                fontSize: "13px",
+                color: "#e7eff6"
             }
         );
         this.notebookQuestStatusText.setDepth(5);
 
-        this.inventoryHintText = this.add.text(15, 135, "Press I: Inventory", {
-            fontSize: "15px", color: "#ffffff", backgroundColor: "#000000",
-            padding: { x: 8, y: 5 }
+        this.inventoryHintText = this.add.text(22, 120, "I  ·  INVENTORY", {
+            fontSize: "12px", color: "#c6d5e1"
         });
         this.inventoryHintText.setDepth(5);
 
-        this.treeHintText = this.add.text(15, 215, "Press T: Tree DSA Training", {
-            fontSize: "14px", color: "#7CFFB2", backgroundColor: "#10251d",
-            padding: { x: 8, y: 5 }
+        this.treeHintText = this.add.text(22, 183, "T  ·  TREE TRAINING", {
+            fontSize: "12px", color: "#9cebd3"
         });
         this.treeHintText.setDepth(5);
 
-        this.integrationHintText = this.add.text(15, 245, "H: History | Q: Tasks | B: Debug Quests", {
-            fontSize: "14px", color: "#d8f4e6", backgroundColor: "#10251d", padding: { x: 8, y: 5 }
+        this.integrationHintText = this.add.text(22, 215, "H History   Q Tasks   B Quests", {
+            fontSize: "11px", color: "#c6d5e1"
         });
         this.integrationHintText.setDepth(5);
         this.historyKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
@@ -2090,9 +2101,8 @@ class GameScene extends Phaser.Scene {
         // Continuous campus clock: one game minute per two real seconds.
         this.gameMinutes = Phaser.Math.Clamp(Number(gameState.gameMinutes ?? 360), 0, 1439);
         this.gameDay = Math.max(1, Number(gameState.gameDay) || 1);
-        this.gameClockText = this.add.text(520, 80, formatGameClock(), {
-            fontSize: "16px", color: "#ffffff", backgroundColor: "#263238",
-            padding: { x: 8, y: 6 }
+        this.gameClockText = this.add.text(515, 78, formatGameClock(), {
+            fontSize: "14px", color: "#fff4d6", fontStyle: "bold"
         });
         this.gameClockText.setDepth(5);
         this.gameClockListener = (timeText) => {
@@ -2104,18 +2114,15 @@ class GameScene extends Phaser.Scene {
         gameClockListeners.add(this.gameClockListener);
         startGameClock();
 
-        this.coffeeQuestStatusText = this.add.text(15, 175, "Coffee Crisis: Talk to your friend", {
-            fontSize: "14px", color: "#ffffff", backgroundColor: "#000000",
-            padding: { x: 8, y: 5 }
+        this.coffeeQuestStatusText = this.add.text(22, 151, "Next · Talk to your friend", {
+            fontSize: "12px", color: "#e7eff6"
         });
         this.coffeeQuestStatusText.setDepth(5);
 
-        this.playerStatsText = this.add.text(520, 15, "Loading C++ Player...", {
-            fontSize: "14px",
-            color: "#ffffff",
-            backgroundColor: "#000000",
-            padding: { x: 8, y: 6 },
-            lineSpacing: 4
+        this.playerStatsText = this.add.text(515, 20, "PLAYER  ·  Loading…", {
+            fontSize: "13px",
+            color: "#e7eff6",
+            lineSpacing: 5
         });
         this.playerStatsText.setDepth(5);
         cppPlayerReady.then((module) => {
@@ -2410,9 +2417,11 @@ class GameScene extends Phaser.Scene {
     }
 
     enterInterior(location) {
-        if (gameState.location !== "campus") return;
+        if (gameState.location !== "campus" || !INTERIOR_LOCATIONS.includes(location)) return;
         this.currentLocation = location;
         this.interiorActive = true;
+        this.interactionBox?.setVisible(false);
+        this.interactionText?.setVisible(false);
         gameState.location = location;
         this.recordGameAction(`Entered ${location}`);
         this.saveProgress();
@@ -2427,8 +2436,12 @@ class GameScene extends Phaser.Scene {
 
         if (this.interiorActive) {
             this.player.body.setVelocity(0);
+            this.interactionBox?.setVisible(false);
+            this.interactionText?.setVisible(false);
             return;
         }
+        const suppressInteractionThisFrame = !!this.suppressNextInteraction;
+        this.suppressNextInteraction = false;
 
         // C Stack / Queue panels pause movement until closed.
         if (this.integrationPanelOpen) {
@@ -2572,7 +2585,6 @@ class GameScene extends Phaser.Scene {
             { type: "treeGarden", object: this.treeGarden },
             { type: "friend", object: this.friend },
             { type: "vending", object: this.vendingMachine },
-            { type: "shopkeeper", object: this.shopkeeper },
             { type: "mentor", object: this.npc },
             { type: "labAssistant", object: this.labAssistant }
         ].map(target => ({
@@ -2597,7 +2609,6 @@ class GameScene extends Phaser.Scene {
                 treeGarden: "Press E to explore the Binary Tree Garden",
                 friend: this.coffeeQuestCompleted ? "Press E to talk to your friend" : "Press E to talk to your friend",
                 vending: this.coffeeQuestCompleted ? "Press E to use vending machine" : "Press E to inspect vending machine",
-                shopkeeper: "Press E to visit campus shop",
                 mentor: this.coffeeQuestCompleted
                     ? (!this.questCompleted ? "Press E to begin DSA training" : "Press E to talk to mentor")
                     : "Mentor: finish the Coffee Crisis first",
@@ -2610,7 +2621,8 @@ class GameScene extends Phaser.Scene {
         }
 
         // PRESS E TO INTERACT WITH THE CLOSEST NPC OR OBJECT
-        if (Phaser.Input.Keyboard.JustDown(this.interactKey) && nearestTarget) {
+        const interactPressed = Phaser.Input.Keyboard.JustDown(this.interactKey);
+        if (!suppressInteractionThisFrame && interactPressed && nearestTarget) {
             switch (nearestTarget.type) {
                 case "hostelDoor": this.enterInterior("hostel"); break;
                 case "labDoor": this.enterInterior("lab"); break;
@@ -2625,10 +2637,6 @@ class GameScene extends Phaser.Scene {
                 case "vending":
                     this.recordGameAction("Inspected vending machine");
                     this.interactWithVendingMachine();
-                    break;
-                case "shopkeeper":
-                    this.logCppNpcInteraction(2);
-                    this.openCampusShop();
                     break;
                 case "mentor":
                     this.logCppNpcInteraction(0);
@@ -2660,8 +2668,14 @@ class InteriorScene extends Phaser.Scene {
     }
 
     init(data) {
-        this.location = ["hostel", "lab", "library", "canteen", "shop"].includes(data?.location)
+        this.location = INTERIOR_LOCATIONS.includes(data?.location)
             ? data.location : "hostel";
+        const savedPosition = gameState.interiorPositions?.[this.location] || DEFAULT_INTERIOR_POSITIONS[this.location];
+        const defaultPosition = DEFAULT_INTERIOR_POSITIONS[this.location];
+        this.spawnPosition = {
+            x: Phaser.Math.Clamp(Number(savedPosition?.x) || defaultPosition.x, 80, 720),
+            y: Phaser.Math.Clamp(Number(savedPosition?.y) || defaultPosition.y, 100, 500)
+        };
     }
 
     create() {
@@ -2676,8 +2690,8 @@ class InteriorScene extends Phaser.Scene {
         this.add.rectangle(748, 300, 8, 500, 0x573d34);
 
         this.player = this.add.sprite(
-            Phaser.Math.Clamp(Number(gameState.interiorX ?? 400), 80, 720),
-            Phaser.Math.Clamp(Number(gameState.interiorY ?? 450), 100, 500),
+            this.spawnPosition.x,
+            this.spawnPosition.y,
             "cv-player", "d0f0"
         ).setDisplaySize(36, 48);
         this.physics.add.existing(this.player);
@@ -2693,9 +2707,20 @@ class InteriorScene extends Phaser.Scene {
         this.clockText.setScrollFactor(0);
         this.clockListener = text => { if (this.clockText?.active) this.clockText.setText(text); };
         gameClockListeners.add(this.clockListener);
-        this.add.text(340, 570, "E: interact  |  WASD: move  |  Door: return to campus", {
-            fontSize: "14px", color: "#ffffff", backgroundColor: "#17212b", padding: { x: 8, y: 4 }
+        this.add.text(340, 570, "E: interact  |  WASD: move  |  X / ESC: campus", {
+            fontSize: "13px", color: "#ffffff", backgroundColor: "#17212b", padding: { x: 8, y: 4 }
         }).setOrigin(0.5);
+
+        // Keep a visible, direct way back in every room. This avoids trapping
+        // the player if they miss the door marker or load beside furniture.
+        this.returnButton = this.add.rectangle(674, 112, 144, 34, 0x245b49)
+            .setStrokeStyle(2, 0x9be7b0).setInteractive({ useHandCursor: true }).setDepth(10);
+        this.returnButtonLabel = this.add.text(674, 112, "← CAMPUS  [X / ESC]", {
+            fontSize: "14px", color: "#ffffff", fontStyle: "bold"
+        }).setOrigin(0.5).setDepth(11);
+        this.returnButton.on("pointerdown", () => this.returnToCampus());
+        this.returnButtonLabel.setInteractive({ useHandCursor: true })
+            .on("pointerdown", () => this.returnToCampus());
 
         this.createExitDoor();
         this.createInteriorLayout();
@@ -2709,7 +2734,9 @@ class InteriorScene extends Phaser.Scene {
         this.escapeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
         this.input.keyboard.on("keydown-ESC", () => {
             if (this.panelOpen) this.closePanel();
+            else this.returnToCampus();
         });
+        this.input.keyboard.on("keydown-X", () => this.returnToCampus());
         this.interactionText = this.add.text(400, 525, "", {
             fontSize: "17px", color: "#ffffff", backgroundColor: "#17212b", padding: { x: 9, y: 6 }
         }).setOrigin(0.5);
@@ -2767,8 +2794,12 @@ class InteriorScene extends Phaser.Scene {
                 this.add.rectangle(x, y - 38, 55, 25, 0x1b6b64);
                 this.addTarget(x, y + 15, `Workstation ${i + 1}: run a C DSA exercise`, "labStation", 0x2d6a4f);
             });
-            this.addSolid(200, 400, 145, 75, 0x416a7d, "LAB ASSISTANT");
-            this.addTarget(200, 350, "Ask the Lab Assistant", "assistant", 0x38a3a5);
+            this.addSolid(200, 400, 145, 75, 0x416a7d, "ASSISTANT DESK");
+            this.add.sprite(200, 330, "cv-assistant", "d0f0").setDisplaySize(38, 48).setDepth(2);
+            this.add.text(200, 292, "LAB ASSISTANT", {
+                fontSize: "12px", color: "#ffffff", fontStyle: "bold", backgroundColor: "#34495e", padding: { x: 6, y: 3 }
+            }).setOrigin(0.5).setDepth(3);
+            this.addTarget(200, 370, "Ask the Lab Assistant", "assistant", 0x38a3a5);
             this.addTarget(540, 400, "Read the DSA wall chart", "booklet", 0x53a8d6);
         } else if (this.location === "library") {
             [155, 325, 495, 645].forEach((x, i) => {
@@ -2780,15 +2811,23 @@ class InteriorScene extends Phaser.Scene {
             });
             this.addTarget(420, 400, "Research desk: open a DSA exercise", "labStation", 0x2d6a4f);
         } else if (this.location === "canteen") {
-            this.addSolid(400, 145, 300, 64, 0xb25d35, "FOOD COUNTER");
+            this.addSolid(520, 145, 300, 64, 0xb25d35, "FOOD COUNTER");
+            this.add.sprite(620, 142, "cv-shopkeeper", "d0f0").setDisplaySize(40, 50).setDepth(2);
+            this.add.text(620, 105, "CANTEEN KEEPER", {
+                fontSize: "12px", color: "#ffffff", fontStyle: "bold", backgroundColor: "#34495e", padding: { x: 6, y: 3 }
+            }).setOrigin(0.5).setDepth(3);
             this.addTarget(400, 190, "Order food from the canteen", "canteenShop", 0xe9a23b);
             [[180, 315], [400, 315], [620, 315]].forEach(([x, y], i) => {
                 this.addSolid(x, y, 125, 55, 0x76563c, `TABLE ${i + 1}`);
             });
             this.addTarget(620, 210, "Talk to the Canteen Keeper", "canteenNpc", 0x38a3a5);
         } else {
-            this.addSolid(400, 145, 320, 65, 0x536b7a, "SHOP COUNTER");
-            this.addTarget(400, 190, "Browse the campus shop", "shop", 0xe9a23b);
+            this.addSolid(400, 145, 320, 65, 0x536b7a, "");
+            this.add.sprite(400, 91, "cv-shopkeeper", "d0f0").setDisplaySize(42, 54).setDepth(2);
+            this.add.text(400, 58, "SHOPKEEPER", {
+                fontSize: "13px", color: "#ffffff", fontStyle: "bold", backgroundColor: "#34495e", padding: { x: 7, y: 4 }
+            }).setOrigin(0.5).setDepth(3);
+            this.addTarget(400, 220, "Shopkeeper: browse wares", "shop", 0xe9a23b);
             [[180, 300], [620, 300]].forEach(([x, y], i) => {
                 this.addSolid(x, y, 120, 100, 0x6b8794, i === 0 ? "BOOKS" : "SUPPLIES");
             });
@@ -2800,6 +2839,8 @@ class InteriorScene extends Phaser.Scene {
         if (this.player) {
             gameState.interiorX = this.player.x;
             gameState.interiorY = this.player.y;
+            gameState.interiorPositions ||= {};
+            gameState.interiorPositions[this.location] = { x: this.player.x, y: this.player.y };
         }
         const campus = this.scene.get("GameScene");
         if (campus && campus.saveProgress) campus.saveProgress();
@@ -2932,6 +2973,12 @@ class InteriorScene extends Phaser.Scene {
         if (!cppAdded) return this.showMessage("The C++ Item system could not add that item.");
         inventory.ccall("insertItem", null, ["string", "number", "string"], [name, 1, description]);
         gameState.coins -= price;
+        if (name === "Notebook" && gameState.notebookQuestAccepted && !gameState.notebookQuestCompleted) {
+            const campus = this.scene.get("GameScene");
+            campus?.completeQueuedTask("Collect Notebook");
+            campus?.enqueueGameTask("Return Notebook to Mentor");
+            campus?.recordGameAction("Collected Notebook from the campus shop");
+        }
         this.showMessage(`${name} added to the C++ Item and C hash-table inventories. Coins left: ${gameState.coins}.`);
         this.saveInteriorProgress();
     }
@@ -2940,13 +2987,16 @@ class InteriorScene extends Phaser.Scene {
         const sellerIndex = 2;
         const greeting = worldModule?.ccall("worldNpcMessage", "string", ["number"], [sellerIndex]) || "Welcome to the campus shop.";
         const add = this.showPanel(canteen ? "CANTEEN COUNTER" : "CAMPUS SHOP", `${greeting}\n\nYour coins: ${gameState.coins}\nItems are recorded by the C++ Item class and the C hash-table inventory.`);
+        const notebookQuantity = hashTableModule?.ccall("searchItemQuantity", "number", ["string"], ["Notebook"]) || 0;
+        const notebookPrice = gameState.notebookQuestAccepted && !gameState.notebookQuestCompleted && notebookQuantity === 0 ? 0 : 10;
         const offers = canteen
             ? [["Snack", 8, "A canteen snack. Restores 10 energy."], ["Coffee", 12, "Fresh canteen coffee. Restores 20 energy."]]
-            : [["Notebook", 10, "A notebook for recording programming ideas."], ["Energy Drink", 15, "Restores player energy when used."]];
+            : [["Notebook", notebookPrice, notebookPrice === 0 ? "Quest notebook · collected free for the Mentor." : "A notebook for recording programming ideas."], ["Energy Drink", 15, "Restores player energy when used."]];
         offers.forEach((offer, index) => {
             const y = 315 + index * 55;
             const button = add(this.add.rectangle(400, y, 390, 40, 0x245b49).setStrokeStyle(1, 0x7cffb2).setInteractive({ useHandCursor: true }));
-            const text = add(this.add.text(400, y, `${offer[0]}  —  ${offer[1]} coins`, { fontSize: "16px", color: "#ffffff" }).setOrigin(0.5));
+            const priceLabel = offer[1] === 0 ? "FREE" : `${offer[1]} coins`;
+            const text = add(this.add.text(400, y, `${offer[0]}  —  ${priceLabel}`, { fontSize: "16px", color: "#ffffff" }).setOrigin(0.5));
             button.on("pointerdown", () => { this.purchaseItem(...offer); this.closePanel(); });
             text.setInteractive({ useHandCursor: true }).on("pointerdown", () => { this.purchaseItem(...offer); this.closePanel(); });
         });
@@ -2954,15 +3004,7 @@ class InteriorScene extends Phaser.Scene {
 
     interact(target) {
         if (target.action === "exit") {
-            this.saveInteriorProgress();
-            gameState.location = "campus";
-            this.exiting = true;
-            const campus = this.scene.get("GameScene");
-            campus.currentLocation = "campus";
-            campus.interiorActive = false;
-            campus.recordGameAction(`Left ${this.location}`);
-            campus.saveProgress();
-            this.scene.stop("InteriorScene");
+            this.returnToCampus();
             return;
         }
         if (target.action === "sleep") {
@@ -2987,8 +3029,30 @@ class InteriorScene extends Phaser.Scene {
         } else if (target.action === "canteenShop") {
             this.openShop(true);
         } else if (target.action === "shop") {
+            this.scene.get("GameScene")?.logCppNpcInteraction(2);
             this.openShop(false);
         }
+    }
+
+    returnToCampus() {
+        if (this.exiting) return;
+        this.saveInteriorProgress();
+        this.exiting = true;
+        gameState.location = "campus";
+        const campus = this.scene.get("GameScene");
+        if (campus) {
+            // GameScene keeps running behind this room. Consume the exit E edge
+            // there before resuming it, or it can trigger a campus NPC too.
+            if (campus.interactKey) Phaser.Input.Keyboard.JustDown(campus.interactKey);
+            campus.currentLocation = "campus";
+            campus.interiorActive = false;
+            campus.suppressNextInteraction = true;
+            campus.recordGameAction(`Left ${this.location}`);
+            campus.saveProgress();
+        } else {
+            persistGameState();
+        }
+        this.scene.stop("InteriorScene");
     }
 
     update() {

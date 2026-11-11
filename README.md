@@ -10,6 +10,8 @@ Cipher Valley is a browser based learning game prototype about C/C++ programming
 
 Use **WASD** to move, **Shift** to sprint, and **E** to interact with nearby people, doors, and objects. The **hostel bed** advances the clock to morning and restores energy. **I** opens inventory; **T** starts tree practice. The on-screen prompts show other context-sensitive controls. Progress saves in the browser's local storage. Add `?newgame=1` to the URL once to clear the current run and start fresh.
 
+From any interior, click **← CAMPUS** in the upper-right corner or press **Esc** to return from anywhere. You can also walk to the bottom doorway and press **E**.
+
 ## Implementation
 
 - Phaser and JavaScript provide the campus, interiors, interactions, HUD, and save system.
