@@ -281,6 +281,13 @@ function assert(condition, text) {
 
 // We used to include malloc/free by default in the past. Show a helpful error in
 // builds with assertions.
+function _malloc() {
+  abort('malloc() called but not included in the build - add `_malloc` to EXPORTED_FUNCTIONS');
+}
+function _free() {
+  // Show a helpful error since we used to include free by default in the past.
+  abort('free() called but not included in the build - add `_free` to EXPORTED_FUNCTIONS');
+}
 
 /**
  * Indicates whether filename is delivered via file protocol (as opposed to http/https)
@@ -4525,8 +4532,6 @@ var _getLinkedListQuestXP = Module['_getLinkedListQuestXP'] = makeInvalidEarlyAc
 var _completeLinkedListQuest = Module['_completeLinkedListQuest'] = makeInvalidEarlyAccess('_completeLinkedListQuest');
 var _fflush = makeInvalidEarlyAccess('_fflush');
 var _strerror = makeInvalidEarlyAccess('_strerror');
-var _malloc = Module['_malloc'] = makeInvalidEarlyAccess('_malloc');
-var _free = Module['_free'] = makeInvalidEarlyAccess('_free');
 var _setThrew = makeInvalidEarlyAccess('_setThrew');
 var _emscripten_stack_init = makeInvalidEarlyAccess('_emscripten_stack_init');
 var _emscripten_stack_get_free = makeInvalidEarlyAccess('_emscripten_stack_get_free');
@@ -4546,8 +4551,6 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports['completeLinkedListQuest'] != 'undefined', 'missing Wasm export: completeLinkedListQuest');
   assert(typeof wasmExports['fflush'] != 'undefined', 'missing Wasm export: fflush');
   assert(typeof wasmExports['strerror'] != 'undefined', 'missing Wasm export: strerror');
-  assert(typeof wasmExports['malloc'] != 'undefined', 'missing Wasm export: malloc');
-  assert(typeof wasmExports['free'] != 'undefined', 'missing Wasm export: free');
   assert(typeof wasmExports['setThrew'] != 'undefined', 'missing Wasm export: setThrew');
   assert(typeof wasmExports['emscripten_stack_init'] != 'undefined', 'missing Wasm export: emscripten_stack_init');
   assert(typeof wasmExports['emscripten_stack_get_free'] != 'undefined', 'missing Wasm export: emscripten_stack_get_free');
@@ -4564,8 +4567,6 @@ function assignWasmExports(wasmExports) {
   _completeLinkedListQuest = Module['_completeLinkedListQuest'] = createExportWrapper('completeLinkedListQuest', wasmExports['completeLinkedListQuest'], 0);
   _fflush = createExportWrapper('fflush', wasmExports['fflush'], 1);
   _strerror = createExportWrapper('strerror', wasmExports['strerror'], 1);
-  _malloc = Module['_malloc'] = createExportWrapper('malloc', wasmExports['malloc'], 1);
-  _free = Module['_free'] = createExportWrapper('free', wasmExports['free'], 1);
   _setThrew = createExportWrapper('setThrew', wasmExports['setThrew'], 2);
   _emscripten_stack_init = wasmExports['emscripten_stack_init'];
   _emscripten_stack_get_free = wasmExports['emscripten_stack_get_free'];
