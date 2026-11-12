@@ -68,22 +68,20 @@
     <script src="game.js?v=room-rpg-ui-12"></script>
 
     <script>
-        document.getElementById("new-game-button")
-            .addEventListener("click", function () {
+    document.getElementById("new-game-button")
+        .addEventListener("click", function () {
 
-                const confirmed = confirm(
-                    "Start a new adventure?\n\nYour existing game progress will be erased."
-                );
+            const confirmed = confirm(
+                "Start a new adventure?\n\nYour existing game progress will be erased."
+            );
 
-                if (!confirmed) return;
+            if (!confirmed) return;
 
-                window.__cipherValleyStartingNewGame = true;
-localStorage.removeItem("cipher-valley-save-v1");
-window.location.reload();
-
-                window.location.reload();
-            });
-    </script>
+            window.__cipherValleyStartingNewGame = true;
+            localStorage.removeItem("cipher-valley-save-v1");
+            window.location.reload();
+        });
+</script>
 
 </body>
 </html>
