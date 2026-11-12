@@ -36,6 +36,8 @@ function loadGameState() {
         treeChallengeCompleted: false,
         labPracticeCompleted: {},
         debugQuestCompleted: {},
+        mentorIntroSeen: false,
+        activeDebugQuestId: null,
         inventory: {},
         actionHistory: [],
         taskQueue: [],
@@ -126,10 +128,16 @@ function startGameClock() {
 }
 
 if (globalThis.window) {
-    ["pagehide", "beforeunload"].forEach(eventName => window.addEventListener(eventName, () => {
-        if (activeGameScene) activeGameScene.saveProgress();
-        else persistGameState();
-    }));
+    ["pagehide", "beforeunload"].forEach(eventName =>
+        window.addEventListener(eventName, () => {
+
+            if (window.__cipherValleyStartingNewGame) return;
+
+            if (activeGameScene) activeGameScene.saveProgress();
+            else persistGameState();
+
+        })
+    );
 }
 
 let cppPlayerModule = null;
@@ -446,6 +454,11 @@ class GameScene extends Phaser.Scene {
         this.debugQuestOpen = false;
         this.debugQuestObjects = [];
         this.debugQuestCompleted = { ...gameState.debugQuestCompleted };
+        this.debugSubmissionPending = false;
+        this.mentorIntroSeen = !!gameState.mentorIntroSeen;
+        this.mentorIntroOpen = false;
+        this.mentorIntroObjects = [];
+        this.debugCodeChallengeOpen = false;
 
         // C Stack / Queue gameplay state, with a safe fallback if a module is missing.
         this.actionHistoryFallback = [...gameState.actionHistory];
@@ -1065,6 +1078,15 @@ class GameScene extends Phaser.Scene {
         this.time.delayedCall(2600, () => { box.destroy(); text.destroy(); });
     }
 
+    animatePanel(objects) {
+        (objects || []).forEach(object => {
+            if (!object?.active || !object.setAlpha) return;
+            const destinationAlpha = object.alpha;
+            object.setAlpha(0);
+            this.tweens.add({ targets: object, alpha: destinationAlpha, duration: 170, ease: "Sine.Out" });
+        });
+    }
+
     async mirrorWorldItem(name, quantity, description) {
         const module = await worldReady;
         if (!module) return false;
@@ -1182,16 +1204,44 @@ class GameScene extends Phaser.Scene {
         };
 
         add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
-        add(this.add.text(400, 48, "CIPHER VALLEY — INVENTORY", {
+        add(this.add.rectangle(400, 300, 760, 560, 0x142733, 1).setStrokeStyle(3, 0x5cc7b2));
+        add(this.add.text(400, 48, "PERSONAL ACCESS TAB", {
             fontSize: "28px", color: "#ffffff", fontStyle: "bold"
         }).setOrigin(0.5));
-        add(this.add.text(400, 84, "C hash table inventory + C++ Item objects", {
-            fontSize: "16px", color: "#b8d8d8"
+        add(this.add.text(400, 82, "PROFILE  ·  QUEST LOG  ·  INVENTORY  ·  DEBUG QUEUE", {
+            fontSize: "13px", color: "#9cebd3"
         }).setOrigin(0.5));
+        add(this.add.text(65, 120,
+            `LEVEL ${this.playerLevel}  ·  XP ${this.playerTotalXP}  ·  ENERGY ${this.playerEnergy}/100  ·  COINS ${gameState.coins}`,
+            { fontSize: "14px", color: "#ffe08a", fontStyle: "bold" }));
+        add(this.add.rectangle(225, 267, 330, 236, 0x1d3542).setStrokeStyle(1, 0x466976));
+        add(this.add.rectangle(575, 267, 330, 236, 0x1d3542).setStrokeStyle(1, 0x466976));
+        add(this.add.text(70, 150, "INVENTORY  ·  C HASH TABLE", {
+            fontSize: "15px", color: "#9cebd3", fontStyle: "bold"
+        }));
+        add(this.add.text(425, 150, "QUEST LOG  ·  C++ PLAYER", {
+            fontSize: "15px", color: "#9cebd3", fontStyle: "bold"
+        }));
+        const completedDebugCount = Object.values(this.debugQuestCompleted).filter(Boolean).length;
+        const completedDebugNames = this.getDebugQuestCatalog()
+            .filter(quest => this.debugQuestCompleted[quest.id])
+            .map(quest => quest.title).join(", ") || "None yet";
+        const questSummary = [
+            `Coffee Crisis  ·  ${this.coffeeQuestCompleted ? "COMPLETE" : this.coffeeQuestAccepted ? "ACTIVE" : "AVAILABLE"}`,
+            `Linked List  ·  ${this.questCompleted ? "COMPLETE" : this.coffeeQuestCompleted ? "AVAILABLE" : "LOCKED"}`,
+            `Notebook  ·  ${this.notebookQuestCompleted ? "COMPLETE" : this.notebookQuestAccepted ? "ACTIVE" : "LOCKED"}`,
+            `Debug missions  ·  ${completedDebugCount}/4 complete`,
+            `Debug cleared  ·  ${completedDebugNames}`,
+            `Current area  ·  ${String(gameState.location).toUpperCase()}`
+        ].join("\n");
+        add(this.add.text(425, 178, questSummary, {
+            fontSize: "14px", color: "#f1f5f9", lineSpacing: 8,
+            wordWrap: { width: 300 }
+        }));
 
-        this.inventoryListText = add(this.add.text(95, 130, "Loading C inventory...", {
-            fontSize: "18px", color: "#ffffff", lineSpacing: 8,
-            wordWrap: { width: 610 }
+        this.inventoryListText = add(this.add.text(70, 178, "Loading C inventory...", {
+            fontSize: "14px", color: "#ffffff", lineSpacing: 5,
+            wordWrap: { width: 300 }
         }));
         this.inventoryMessageText = add(this.add.text(400, 420, "", {
             fontSize: "17px", color: "#ffe08a", align: "center",
@@ -1214,9 +1264,14 @@ class GameScene extends Phaser.Scene {
         button(690, 500, "Use Coffee", () => this.useInventoryItem("Coffee", 20));
         button(200, 450, "Use Energy Drink", () => this.useInventoryItem("Energy Drink", 40));
         button(600, 450, "Use Snack", () => this.useInventoryItem("Snack", 10));
-        button(400, 555, "Close  [I / Esc]", () => this.closeInventory());
+        button(315, 555, "CLOSE  [I / ESC]", () => this.closeInventory());
+        button(625, 555, "QUEUE  ›", () => {
+            this.closeInventory();
+            this.showDebugQuestBoard();
+        });
 
         this.inventoryExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        this.animatePanel(this.inventoryObjects);
         await this.refreshInventoryList();
     }
 
@@ -1268,14 +1323,13 @@ class GameScene extends Phaser.Scene {
                 this.inventoryListText.setText("Your inventory is empty.\n\nUse the buttons below to add items.");
                 return;
             }
-            const lines = ["ITEMS STORED IN THE C HASH TABLE", ""];
+            const lines = ["ITEMS IN THE C HASH TABLE", ""];
             for (let i = 0; i < count; i++) {
                 const name = module.ccall("getItemNameAt", "string", ["number"], [i]);
                 const quantity = module.ccall("getItemQuantityAt", "number", ["number"], [i]);
                 const description = module.ccall("getItemDescriptionAt", "string", ["number"], [i]);
-                lines.push((i + 1) + ". " + name + "  × " + quantity);
-                lines.push("   " + description);
-                lines.push("");
+                const shortDescription = description.length > 56 ? `${description.slice(0, 53)}…` : description;
+                lines.push(`• ${name}  × ${quantity}  —  ${shortDescription}`);
             }
             this.inventoryListText.setText(lines.join("\n"));
         } catch (error) {
@@ -1369,6 +1423,7 @@ class GameScene extends Phaser.Scene {
                 }
             });
         });
+        this.animatePanel(this.questDialogueObjects);
     }
 
     closeQuestDialogue() {
@@ -1404,13 +1459,115 @@ class GameScene extends Phaser.Scene {
         );
     }
 
+    showMentorIntroduction() {
+        if (this.mentorIntroOpen || this.mentorIntroSeen) return;
+        this.mentorIntroOpen = true;
+        this.player.body.setVelocity(0);
+        this.mentorIntroPages = [
+            "Welcome to Cipher Valley! You've finally made it here. This place is different from anywhere you've been before.",
+            "Cipher Valley is where exploration and programming come together. Discover new locations, meet people, solve problems, and build your programming skills as you travel.",
+            "Before entering the valley, you received your personal access tab. Keep it with you: it tracks your profile, progress, quests, and inventory. Open it with I or tap ACCESS TAB on your screen.",
+            "When you're ready to test your skills, open the tab and press QUEUE. Choose a debugging mission to read its story, review the code, and start the challenge. Hints are there when you need them.",
+            "Don't worry about mistakes. That's how you'll learn. Explore the valley, complete quests, and discover what you're capable of. I'll be here whenever you need guidance. Good luck!"
+        ];
+        this.mentorIntroPage = 0;
+        this.mentorIntroObjects = [];
+        const add = object => {
+            object.setDepth(70).setScrollFactor(0);
+            this.mentorIntroObjects.push(object);
+            return object;
+        };
+        add(this.add.rectangle(400, 466, 760, 220, 0x10202b, 0.97)
+            .setStrokeStyle(3, 0x70d6c2));
+        add(this.add.rectangle(61, 466, 68, 124, 0x203c49)
+            .setStrokeStyle(2, 0xf4d58d));
+        add(this.add.sprite(61, 456, "cv-mentor", "d0f0").setDisplaySize(50, 64));
+        add(this.add.text(108, 370, "THE MENTOR", {
+            fontSize: "14px", color: "#9cebd3", fontStyle: "bold"
+        }));
+        this.mentorIntroText = add(this.add.text(108, 400, "", {
+            fontSize: "17px", color: "#f1f5f9", lineSpacing: 7,
+            wordWrap: { width: 620 }
+        }));
+        this.mentorIntroCounter = add(this.add.text(620, 533, "01 / 05", {
+            fontSize: "12px", color: "#b8c7d9"
+        }).setOrigin(1, 0.5));
+        this.mentorIntroContinue = add(this.add.text(700, 533, "CONTINUE  ›", {
+            fontSize: "14px", color: "#10202b", fontStyle: "bold",
+            backgroundColor: "#8be0c2", padding: { x: 12, y: 8 }
+        }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }));
+        this.mentorIntroContinue.on("pointerdown", () => this.advanceMentorIntroduction());
+        this.mentorIntroKeyHandler = event => {
+            if (event.code !== "Enter" && event.code !== "Space") return;
+            event.preventDefault();
+            this.advanceMentorIntroduction();
+        };
+        globalThis.window?.addEventListener("keydown", this.mentorIntroKeyHandler, true);
+        this.animatePanel(this.mentorIntroObjects);
+        this.renderMentorIntroPage();
+    }
+
+    renderMentorIntroPage() {
+        const page = this.mentorIntroPages[this.mentorIntroPage];
+        this.mentorIntroText.setText("");
+        this.mentorIntroCounter.setText(`${String(this.mentorIntroPage + 1).padStart(2, "0")} / ${String(this.mentorIntroPages.length).padStart(2, "0")}`);
+        this.mentorIntroContinue.setText(this.mentorIntroPage === this.mentorIntroPages.length - 1 ? "FINISH  ✓" : "CONTINUE  ›");
+        this.mentorIntroTyping = true;
+        let index = 0;
+        this.mentorIntroTimer?.remove(false);
+        this.mentorIntroTimer = this.time.addEvent({
+            delay: 17,
+            loop: true,
+            callback: () => {
+                index += 1;
+                this.mentorIntroText.setText(page.slice(0, index));
+                if (index >= page.length) {
+                    this.mentorIntroTimer.remove(false);
+                    this.mentorIntroTimer = null;
+                    this.mentorIntroTyping = false;
+                }
+            }
+        });
+    }
+
+    advanceMentorIntroduction() {
+        if (!this.mentorIntroOpen) return;
+        if (this.mentorIntroTyping) {
+            this.mentorIntroTimer?.remove(false);
+            this.mentorIntroTimer = null;
+            this.mentorIntroText.setText(this.mentorIntroPages[this.mentorIntroPage]);
+            this.mentorIntroTyping = false;
+            return;
+        }
+        if (this.mentorIntroPage < this.mentorIntroPages.length - 1) {
+            this.mentorIntroPage += 1;
+            this.renderMentorIntroPage();
+            return;
+        }
+        this.mentorIntroOpen = false;
+        this.mentorIntroSeen = true;
+        gameState.mentorIntroSeen = true;
+        this.mentorIndicator?.setText("?");
+        this.recordGameAction("Completed Mentor introduction");
+        this.mentorIntroTimer?.remove(false);
+        globalThis.window?.removeEventListener("keydown", this.mentorIntroKeyHandler, true);
+        this.mentorIntroObjects.forEach(object => object.destroy());
+        this.mentorIntroObjects = [];
+        this.saveProgress();
+    }
+
     async interactWithMentor() {
-        // The opening story quest teaches interaction and code repair before DSA training.
+        if (!this.mentorIntroSeen) {
+            this.showMentorIntroduction();
+            return;
+        }
+
+        // The mentor remains available for short, quest-aware guidance after the introduction.
         if (!this.coffeeQuestCompleted) {
             this.showQuestDialogue(
-                "MENTOR",
-                "Welcome to Cipher Valley — a campus where every broken machine hides a programming lesson. The coding festival begins tonight, but the hostel vending machine has failed and your friend is counting on you. Repair it first; then I will teach you how to turn data structures into tools, not just textbook definitions.",
-                [{ label: "I'll do it", callback: () => {} }]
+                "MENTOR · FIELD NOTES",
+                "Your first mission is the Coffee Crisis. Talk to your friend, accept the repair task, then inspect the vending machine. Your access tab's QUEUE holds extra debugging missions whenever you want practice.",
+                [{ label: "Understood", callback: () => {} }]
             );
             return;
         }
@@ -1944,6 +2101,13 @@ class GameScene extends Phaser.Scene {
 
         // MENTOR NPC
         this.npc = this.add.sprite(mx(600), my(350), "cv-mentor", "d0f0").setDisplaySize(42, 52);
+        this.mentorIndicator = this.add.text(this.npc.x, this.npc.y - 42,
+            this.mentorIntroSeen ? "?" : "!", {
+                fontSize: "18px", color: "#fff4a3", fontStyle: "bold",
+                backgroundColor: "#183c45", padding: { x: 7, y: 3 }
+            }).setOrigin(0.5).setDepth(5);
+        this.tweens.add({ targets: this.mentorIndicator, y: this.mentorIndicator.y - 5,
+            alpha: 0.7, duration: 650, yoyo: true, repeat: -1 });
 
         this.add.text(
             mx(570), my(375),
@@ -2108,11 +2272,19 @@ class GameScene extends Phaser.Scene {
         this.notebookQuestStatusText.setDepth(5);
         this.notebookQuestStatusText.setScrollFactor(0);
 
-        this.inventoryHintText = this.add.text(22, 120, "I  ·  INVENTORY", {
+        this.inventoryHintText = this.add.text(22, 120, "ACCESS TAB  ·  I", {
             fontSize: "12px", color: "#c6d5e1"
         });
+        this.accessTabButton = this.add.rectangle(83, 132, 144, 28, 0x245b49)
+            .setStrokeStyle(1, 0x7cffb2).setDepth(4.5).setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+        this.accessTabButton.on("pointerdown", () => this.showInventory());
         this.inventoryHintText.setDepth(5);
         this.inventoryHintText.setScrollFactor(0);
+        this.inventoryHintText.setInteractive({ useHandCursor: true })
+            .on("pointerdown", () => this.showInventory());
+        this.inventoryHintText.on("pointerover", () => this.inventoryHintText.setColor("#7cffb2"));
+        this.inventoryHintText.on("pointerout", () => this.inventoryHintText.setColor("#c6d5e1"));
 
         this.treeHintText = this.add.text(22, 183, "T  ·  TREE TRAINING", {
             fontSize: "12px", color: "#9cebd3"
@@ -2173,6 +2345,7 @@ class GameScene extends Phaser.Scene {
             }
             this.recordGameAction(`Resumed Day ${this.gameDay}`);
         });
+        this.restoreDebugQuestLog();
 
         this.autoSaveTimer = this.time.addEvent({ delay: 1000, callback: this.saveProgress, callbackScope: this, loop: true });
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -2240,6 +2413,8 @@ class GameScene extends Phaser.Scene {
         gameState.notebookQuestCompleted = !!this.notebookQuestCompleted;
         gameState.treeChallengeCompleted = !!this.treeChallengeCompleted;
         gameState.debugQuestCompleted = { ...this.debugQuestCompleted };
+        gameState.mentorIntroSeen = !!this.mentorIntroSeen;
+        gameState.activeDebugQuestId = gameState.activeDebugQuestId || null;
         gameState.labPracticeCompleted = { ...gameState.labPracticeCompleted };
         gameState.storyStep = this.coffeeQuestCompleted ? (this.questCompleted ? 2 : 1) : 0;
         if (cppPlayerModule) {
@@ -2294,110 +2469,291 @@ class GameScene extends Phaser.Scene {
     // ==========================================
     // DEBUGGING SIDE QUESTS (PRESS B)
     // ==========================================
-    showDebugQuestBoard() {
-        if (this.debugQuestOpen || this.treeChallengeOpen || this.dsaOpen ||
-            this.inventoryOpen || this.questDialogueOpen || this.coffeeChallengeOpen) return;
+    getDebugQuestCatalog() {
+        return [
+            { id: "null", title: "Guard the NULL Pointer", language: "C · linked lists", xp: 10,
+                story: "A damaged list may have no first node. Add the guard before reading head->data.",
+                code: "Node *head = getHead();\nif (_____) {\n    printf(\"%d\", head->data);\n}",
+                prompt: "Fill the condition that makes the dereference safe.", answers: ["head != NULL", "NULL != head"],
+                hint: "Check that head points to a node before accessing a field." },
+            { id: "loop", title: "Restart the Search Loop", language: "C · control flow", xp: 10,
+                story: "The search never advances past its first item. Restore the loop update so it can reach its stop condition.",
+                code: "for (int i = 0; i < length; _____) {\n    inspect(items[i]);\n}",
+                prompt: "Enter the missing update expression.", answers: ["i++", "++i", "i += 1"],
+                hint: "Increase i by one on each pass." },
+            { id: "hash", title: "Resolve a Hash Collision", language: "C · hash table", xp: 10,
+                story: "A slot is occupied. The table uses linear probing, so calculate the next slot and wrap at the table size.",
+                code: "while (table[index] != EMPTY) {\n    index = (index + _____) % TABLE_SIZE;\n}",
+                prompt: "Enter the step size used by linear probing.", answers: ["1"],
+                hint: "Probe the next slot, one position at a time." },
+            { id: "condition", title: "Restore the Dispenser Guard", language: "C · vending WebAssembly", xp: 15,
+                story: "The festival dispenser must reject requests larger than its remaining stock. Repair the missing bound check.",
+                code: "int dispenseCoffee(int stock, int requested) {\n    if (requested > 0 && requested <= _____) {\n        return requested;\n    }\n    return 0;\n}",
+                prompt: "Enter the C parameter that represents available cups. The compiled C tests verify your fix.",
+                answers: ["stock"], hint: "Compare requested cups with the available amount. The parameter is named in the function signature." }
+        ];
+    }
+
+    async restoreDebugQuestLog() {
+        const module = await linkedListReady;
+        if (!module) return;
+        this.getDebugQuestCatalog().forEach((quest, index) => {
+            const cQuestId = 100 + index;
+            module.ccall("addQuest", "number", ["number", "string"], [cQuestId, quest.title]);
+            if (this.debugQuestCompleted[quest.id]) module.ccall("completeQuest", "number", ["number"], [cQuestId]);
+        });
+    }
+
+    showDebugQuestBoard(force = false) {
+        if ((!force && (this.debugQuestOpen || this.treeChallengeOpen || this.dsaOpen ||
+            this.inventoryOpen || this.questDialogueOpen || this.coffeeChallengeOpen)) || this.mentorIntroOpen) return;
+        const firstOpen = !this.debugQuestOpen;
+        this.cleanupDebugQuestInput();
         this.debugQuestOpen = true;
+        this.debugCodeChallengeOpen = false;
         this.player.body.setVelocity(0);
-        this.recordGameAction("Opened Debug Quest Board");
-        if (Object.keys(this.debugQuestCompleted).length < 4) this.enqueueGameTask("Complete a debugging side quest");
+        if (firstOpen) this.recordGameAction("Opened access tab debugging queue");
+        this.debugQuestObjects?.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
-        const add = (obj) => {
+        const add = obj => {
             obj.setDepth(120).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
-        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.96));
-        add(this.add.rectangle(400, 300, 650, 480, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
-        add(this.add.text(400, 85, "DEBUGGING QUEST BOARD", {
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.88));
+        add(this.add.rectangle(400, 300, 690, 520, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
+        add(this.add.text(400, 68, "DEBUGGING QUEST QUEUE", {
             fontSize: "25px", color: "#7CFFB2", fontStyle: "bold"
         }).setOrigin(0.5));
-        add(this.add.text(400, 120, "Help the campus team fix four small code issues. Each quest pays +10 XP.", {
-            fontSize: "15px", color: "#d8f4e6", align: "center", wordWrap: { width: 570 }
+        add(this.add.text(400, 103, "Choose a mission to read its briefing, then start a real code repair.", {
+            fontSize: "14px", color: "#d8f4e6", align: "center"
         }).setOrigin(0.5));
-        const quests = [
-            { id: "null", title: "1. NULL Pointer", detail: "A linked-list head is NULL. What should you do before reading head->next?",
-                options: ["Check head != NULL", "Call free(head)", "Use head->next first"], correct: 0,
-                success: "Good safety check! Always validate a pointer before dereferencing it." },
-            { id: "loop", title: "2. Infinite Loop", detail: "A loop never ends because i stays at 0. What is missing?",
-                options: ["An update such as i++", "Another printf", "A larger array"], correct: 0,
-                success: "Correct! Loop control needs an update that moves toward the stopping condition." },
-            { id: "hash", title: "3. Hash Collision", detail: "Two items map to the same hash-table index. What is a common fix?",
-                options: ["Linear probing", "Delete the whole table", "Always use index 0"], correct: 0,
-                success: "Correct! Linear probing checks later slots until a suitable one is found." },
-            { id: "condition", title: "4. Broken Condition", detail: "A vending machine should work only when stock > 0. Which condition is right?",
-                options: ["stock > 0", "stock < 0", "stock == -1"], correct: 0,
-                success: "Fixed! A clear condition prevents the machine from serving an empty slot." }
-        ];
-        quests.forEach((quest, i) => {
-            const y = 175 + i * 72;
-            const done = !!this.debugQuestCompleted[quest.id];
-            const button = add(this.add.rectangle(400, y, 540, 54, done ? 0x245b49 : 0x263746)
-                .setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: !done }));
-            const label = add(this.add.text(400, y, done ? quest.title + "  ✓ COMPLETED" : quest.title, {
-                fontSize: "17px", color: done ? "#7CFFB2" : "#ffffff", align: "center"
-            }).setOrigin(0.5));
-            if (!done) button.on("pointerdown", () => this.showDebugQuestQuestion(quest));
+        this.getDebugQuestCatalog().forEach((quest, index) => {
+            const y = 160 + index * 78;
+            const completed = !!this.debugQuestCompleted[quest.id];
+            const active = gameState.activeDebugQuestId === quest.id;
+            const status = completed ? "COMPLETE ✓" : active ? "RESUME MISSION ›" : "VIEW BRIEFING ›";
+            const button = add(this.add.rectangle(400, y, 590, 62, completed ? 0x245b49 : 0x263746)
+                .setStrokeStyle(1, completed ? 0x7cffb2 : 0x5cc7b2)
+                .setInteractive({ useHandCursor: !completed }));
+            const label = add(this.add.text(130, y - 16,
+                `${String(index + 1).padStart(2, "0")}  ${quest.title}`, {
+                    fontSize: "16px", color: completed ? "#7CFFB2" : "#ffffff", fontStyle: "bold"
+                }));
+            add(this.add.text(130, y + 11, `${quest.language}  ·  ${quest.xp} XP`, {
+                fontSize: "12px", color: "#b8c7d9"
+            }));
+            add(this.add.text(665, y, status, {
+                fontSize: "12px", color: completed ? "#7CFFB2" : "#9cebd3", fontStyle: "bold"
+            }).setOrigin(1, 0.5));
+            if (!completed) {
+                const openBriefing = () => this.showDebugQuestBriefing(quest);
+                button.on("pointerdown", openBriefing);
+                label.setInteractive({ useHandCursor: true }).on("pointerdown", openBriefing);
+            }
         });
-        add(this.add.text(400, 475, "Press B or ESC to close", {
-            fontSize: "15px", color: "#b8c7d9"
+        add(this.add.text(400, 492, "B / ESC  ·  close queue", {
+            fontSize: "13px", color: "#b8c7d9"
         }).setOrigin(0.5));
+        this.animatePanel(this.debugQuestObjects);
+    }
+
+    showDebugQuestBriefing(quest) {
+        this.debugQuestObjects.forEach(obj => obj?.destroy?.());
+        this.debugQuestObjects = [];
+        const add = obj => {
+            obj.setDepth(125).setScrollFactor(0);
+            this.debugQuestObjects.push(obj);
+            return obj;
+        };
+        const active = gameState.activeDebugQuestId === quest.id;
+        const anotherMissionActive = !!gameState.activeDebugQuestId && !active;
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.90));
+        add(this.add.rectangle(400, 300, 660, 460, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
+        add(this.add.text(400, 100, quest.title, {
+            fontSize: "25px", color: "#7CFFB2", fontStyle: "bold", align: "center", wordWrap: { width: 580 }
+        }).setOrigin(0.5));
+        add(this.add.text(400, 140, `${quest.language}  ·  REWARD ${quest.xp} XP`, {
+            fontSize: "13px", color: "#ffe08a", fontStyle: "bold"
+        }).setOrigin(0.5));
+        add(this.add.text(120, 185, quest.story, {
+            fontSize: "17px", color: "#f1f5f9", lineSpacing: 7, wordWrap: { width: 560 }
+        }));
+        add(this.add.text(400, 295, "MISSION OBJECTIVE", {
+            fontSize: "13px", color: "#9cebd3", fontStyle: "bold"
+        }).setOrigin(0.5));
+        add(this.add.text(400, 322, quest.prompt, {
+            fontSize: "15px", color: "#d8f4e6", align: "center", wordWrap: { width: 540 }
+        }).setOrigin(0.5));
+        const startButton = add(this.add.text(505, 430,
+            active ? "RESUME CHALLENGE  ›" : anotherMissionActive ? "FINISH ACTIVE MISSION FIRST" : "ACCEPT & START  ›", {
+            fontSize: "15px", color: anotherMissionActive ? "#d2d9dc" : "#10202b",
+            backgroundColor: anotherMissionActive ? "#46565c" : "#8be0c2", fontStyle: "bold",
+            padding: { x: 14, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: !anotherMissionActive }));
+        startButton.on("pointerdown", () => {
+            if (anotherMissionActive) return;
+            if (!active) {
+                gameState.activeDebugQuestId = quest.id;
+                this.enqueueGameTask(`Debug mission: ${quest.id}`);
+                this.recordGameAction(`Accepted debugging mission: ${quest.title}`);
+                this.saveProgress();
+            }
+            this.showDebugQuestQuestion(quest);
+        });
+        const backButton = add(this.add.text(290, 430, "‹  QUEUE", {
+            fontSize: "15px", color: "#ffffff", backgroundColor: "#285943", padding: { x: 14, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        backButton.on("pointerdown", () => this.showDebugQuestBoard(true));
+        this.animatePanel(this.debugQuestObjects);
     }
 
     showDebugQuestQuestion(quest) {
         if (!this.debugQuestOpen || this.debugQuestCompleted[quest.id]) return;
-        this.debugQuestObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
+        this.cleanupDebugQuestInput();
+        this.debugQuestObjects.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
-        const add = (obj) => {
+        this.debugCodeChallengeOpen = true;
+        this.currentDebugQuest = quest;
+        const add = obj => {
             obj.setDepth(125).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
         add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.97));
-        add(this.add.rectangle(400, 300, 650, 430, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
-        add(this.add.text(400, 125, quest.title, {
-            fontSize: "24px", color: "#7CFFB2", fontStyle: "bold"
+        add(this.add.rectangle(400, 300, 730, 530, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
+        add(this.add.text(400, 58, quest.title, {
+            fontSize: "23px", color: "#7CFFB2", fontStyle: "bold", align: "center", wordWrap: { width: 650 }
         }).setOrigin(0.5));
-        add(this.add.text(400, 185, quest.detail, {
-            fontSize: "18px", color: "#ffffff", align: "center", wordWrap: { width: 540 }
+        add(this.add.text(400, 91, `${quest.language}  ·  MISSION REWARD ${quest.xp} XP`, {
+            fontSize: "13px", color: "#ffe08a", fontStyle: "bold"
         }).setOrigin(0.5));
-        const feedback = add(this.add.text(400, 410, "", {
-            fontSize: "16px", color: "#ffcc66", align: "center", wordWrap: { width: 550 }
+        add(this.add.text(400, 122, quest.story, {
+            fontSize: "14px", color: "#e8f1f2", align: "center", wordWrap: { width: 620 }
         }).setOrigin(0.5));
-        quest.options.forEach((option, index) => {
-            const y = 270 + index * 52;
-            const button = add(this.add.rectangle(400, y, 520, 40, 0x263746)
-                .setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }));
-            const label = add(this.add.text(400, y, String.fromCharCode(65 + index) + ") " + option, {
-                fontSize: "16px", color: "#ffffff", align: "center", wordWrap: { width: 490 }
-            }).setOrigin(0.5));
-            button.on("pointerdown", async () => {
-                if (this.debugQuestCompleted[quest.id]) return;
-                if (index !== quest.correct) {
-                    feedback.setText("Not quite — try another answer.");
-                    return;
-                }
-                this.debugQuestCompleted[quest.id] = true;
-                this.completeQueuedTask("Complete a debugging side quest");
-                this.recordGameAction("Completed " + quest.title + " (+10 XP)");
-                feedback.setColor("#7CFFB2");
-                feedback.setText(quest.success + "\n+10 XP");
-                await this.awardXP(10);
-                this.updateQuestHUD();
-                this.time.delayedCall(1100, () => {
-                    if (!this.scene || !this.scene.isActive()) return;
-                    this.closeDebugQuestBoard();
-                    this.showDebugQuestBoard();
-                });
-            });
+        add(this.add.rectangle(400, 258, 635, 178, 0x09151d).setStrokeStyle(1, 0x52707d));
+        add(this.add.text(94, 185, quest.code, {
+            fontFamily: "Consolas, monospace", fontSize: "16px", color: "#b8f4d4",
+            lineSpacing: 7, wordWrap: { width: 600 }
+        }));
+        add(this.add.text(400, 375, quest.prompt, {
+            fontSize: "14px", color: "#d8f4e6", align: "center", wordWrap: { width: 610 }
+        }).setOrigin(0.5));
+        const feedback = add(this.add.text(400, 425, "", {
+            fontSize: "14px", color: "#ffe08a", align: "center", wordWrap: { width: 610 }
+        }).setOrigin(0.5));
+        this.debugQuestInput = document.createElement("input");
+        this.debugQuestInput.type = "text";
+        this.debugQuestInput.autocomplete = "off";
+        this.debugQuestInput.spellcheck = false;
+        this.debugQuestInput.placeholder = "Type the missing code...";
+        this.debugQuestInput.setAttribute("aria-label", "Debug mission code answer");
+        const canvasRect = this.game.canvas.getBoundingClientRect();
+        Object.assign(this.debugQuestInput.style, {
+            position: "fixed", left: `${canvasRect.left + canvasRect.width * 0.24}px`,
+            top: `${canvasRect.top + canvasRect.height * 0.76}px`, width: `${canvasRect.width * 0.52}px`,
+            padding: "10px 14px", boxSizing: "border-box", fontSize: "16px",
+            border: "2px solid #57cc99", borderRadius: "8px", zIndex: "10000",
+            background: "#f5fff9", color: "#10251c", textAlign: "center"
         });
-        add(this.add.text(400, 500, "Choose the best fix. Incorrect answers can be retried.", {
-            fontSize: "14px", color: "#b8c7d9", align: "center"
-        }).setOrigin(0.5));
+        document.body.appendChild(this.debugQuestInput);
+        this.debugReleasedKeyCapture = [...Array(26)].map((_, index) => 65 + index).concat([
+            Phaser.Input.Keyboard.KeyCodes.SHIFT,
+            Phaser.Input.Keyboard.KeyCodes.SPACE,
+            Phaser.Input.Keyboard.KeyCodes.MINUS,
+            Phaser.Input.Keyboard.KeyCodes.PLUS,
+            Phaser.Input.Keyboard.KeyCodes.PERIOD
+        ]);
+        this.input.keyboard.removeCapture(this.debugReleasedKeyCapture);
+        const submit = async () => {
+            if (!this.debugQuestInput || this.debugQuestInput.disabled || this.debugSubmissionPending) return;
+            const answer = this.debugQuestInput.value.trim().replace(/\s+/g, " ").replace(/;$/, "").trim();
+            if (!answer) {
+                feedback.setColor("#ffcc66").setText("Type a code answer before submitting.");
+                return;
+            }
+            this.debugSubmissionPending = true;
+           let accepted = quest.answers.some(
+    candidate => candidate.replace(/\s+/g, "") === answer.replace(/\s+/g, "")
+);
+            if (quest.id === "condition") {
+                const module = await vendingReady;
+                accepted = !!module && module.ccall("vendingValidateFix", "number", ["string"], [answer]) === 1;
+            }
+            if (!accepted) {
+                feedback.setColor("#ffcc66").setText("That code still fails the mission checks. Review the hint and try again.");
+                this.debugSubmissionPending = false;
+                return;
+            }
+            const linked = await linkedListReady;
+            const questIndex = this.getDebugQuestCatalog().findIndex(entry => entry.id === quest.id);
+            const cQuestId = 100 + questIndex;
+            if (!linked || !linked.ccall("addQuest", "number", ["number", "string"], [cQuestId, quest.title]) ||
+                !linked.ccall("completeQuest", "number", ["number"], [cQuestId])) {
+                feedback.setColor("#ffcc66").setText("The C linked-list quest log is unavailable. Your mission was not marked complete.");
+                this.debugSubmissionPending = false;
+                return;
+            }
+            const rewarded = await this.awardXP(quest.xp);
+            if (!rewarded) {
+                feedback.setColor("#ffcc66").setText("The C++ Player module could not award XP, so the mission remains active.");
+                this.debugSubmissionPending = false;
+                return;
+            }
+            this.debugQuestCompleted[quest.id] = true;
+            gameState.debugQuestCompleted = { ...this.debugQuestCompleted };
+            gameState.activeDebugQuestId = null;
+            this.completeQueuedTask(`Debug mission: ${quest.id}`);
+            this.recordGameAction(`Completed debugging mission: ${quest.title} (+${quest.xp} XP)`);
+            this.saveProgress();
+            feedback.setColor("#7CFFB2").setText(`C code checks passed. Mission complete!  +${quest.xp} XP`);
+            this.debugQuestInput.disabled = true;
+            this.time.delayedCall(1400, () => {
+                if (!this.scene || !this.scene.isActive()) return;
+                this.cleanupDebugQuestInput();
+                this.debugCodeChallengeOpen = false;
+                this.showDebugQuestBoard(true);
+            });
+        };
+        this.debugQuestSubmit = submit;
+        this.debugQuestInput.addEventListener("keydown", event => {
+            event.stopPropagation();
+            if (event.key === "Enter") submit();
+            if (event.key === "Escape") this.showDebugQuestBoard(true);
+        });
+        this.debugSubmissionPending = false;
+        this.debugQuestInput.focus();
+        const hintButton = add(this.add.text(242, 516, "HINT", {
+            fontSize: "14px", color: "#ffffff", backgroundColor: "#285943", padding: { x: 16, y: 9 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        hintButton.on("pointerdown", () => feedback.setColor("#ffe08a").setText(quest.hint));
+        const submitButton = add(this.add.text(400, 516, "SUBMIT CODE  ↵", {
+            fontSize: "14px", color: "#10202b", backgroundColor: "#8be0c2", fontStyle: "bold", padding: { x: 16, y: 9 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        submitButton.on("pointerdown", submit);
+        const backButton = add(this.add.text(580, 516, "‹  QUEUE", {
+            fontSize: "14px", color: "#ffffff", backgroundColor: "#285943", padding: { x: 16, y: 9 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        backButton.on("pointerdown", () => this.showDebugQuestBoard(true));
+        this.animatePanel(this.debugQuestObjects);
+    }
+
+    cleanupDebugQuestInput() {
+        if (this.debugQuestInput) {
+            this.debugQuestInput.remove();
+            this.debugQuestInput = null;
+        }
+        if (this.debugReleasedKeyCapture && this.input?.keyboard) {
+            this.input.keyboard.addCapture(this.debugReleasedKeyCapture);
+            this.debugReleasedKeyCapture = null;
+        }
+        this.debugSubmissionPending = false;
     }
 
     closeDebugQuestBoard() {
+        this.cleanupDebugQuestInput();
         this.debugQuestOpen = false;
+        this.debugCodeChallengeOpen = false;
         this.debugQuestObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
         this.debugQuestObjects = [];
     }
@@ -2519,6 +2875,10 @@ class GameScene extends Phaser.Scene {
             this.interactionText?.setVisible(false);
             return;
         }
+        if (this.mentorIntroOpen) {
+            this.player.body.setVelocity(0);
+            return;
+        }
         const suppressInteractionThisFrame = !!this.suppressNextInteraction;
         this.suppressNextInteraction = false;
 
@@ -2540,6 +2900,15 @@ class GameScene extends Phaser.Scene {
         }
         if (!anotherOverlayOpen && this.taskQueueKey && Phaser.Input.Keyboard.JustDown(this.taskQueueKey)) {
             this.showIntegrationPanel("queue");
+            return;
+        }
+
+        if (this.debugCodeChallengeOpen) {
+            this.player.body.setVelocity(0);
+            if (this.treeKey) Phaser.Input.Keyboard.JustDown(this.treeKey);
+            if (this.debugQuestKey) Phaser.Input.Keyboard.JustDown(this.debugQuestKey);
+            if (this.inventoryKey) Phaser.Input.Keyboard.JustDown(this.inventoryKey);
+            if (this.debugQuestExitKey) Phaser.Input.Keyboard.JustDown(this.debugQuestExitKey);
             return;
         }
 

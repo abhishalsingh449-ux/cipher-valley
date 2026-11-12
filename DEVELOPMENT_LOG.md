@@ -25,3 +25,6 @@
 - Added a `game.js` cache-busting query to the HTML script URL so browsers load updated gameplay code during local iteration.
 - Fixed the room-exit E input leaking into campus interactions, validated and clamped saved room positions, and aligned the canteen counter with its keeper.
 - Added an X shortcut to return to campus from anywhere inside an interior, including the lab, and updated the on-screen control hint.
+- Expanded the campus to a camera-following 1200 × 900 world and added a fixed minimap with building markers and the player position.
+- Reworked the player inventory into a Personal Access Tab with quest status and a functional QUEUE for C code missions.
+- Added a one-time typewriter mentor introduction and quest-aware follow-up guidance; debugging missions now use typed code answers with C linked-list tracking, C queue tasks, and C++ Player XP.
