@@ -97,6 +97,9 @@ function loadGameState() {
 const gameState = loadGameState();
 
 function persistGameState() {
+    // Never write an old save while NEW GAME is restarting the application.
+    if (globalThis.window?.__cipherValleyStartingNewGame) return;
+
     try {
         globalThis.localStorage?.setItem(SAVE_KEY, JSON.stringify(gameState));
     } catch (error) {
