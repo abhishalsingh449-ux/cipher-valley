@@ -471,31 +471,35 @@ class PrologueScene extends Phaser.Scene {
     }
 
     create() {
-        this.cameras.main.setBackgroundColor("#101820");
+        this.cameras.main.setBackgroundColor("#05090d");
+        this.cameras.main.fadeIn(1000, 0, 0, 0);
 
-        this.add.text(400, 190, "WELCOME TO", {
-            fontSize: "24px",
+        this.introStarted = false;
+        this.introFinished = false;
+
+        this.showOpeningScreen();
+
+        this.input.keyboard.on("keydown-ESC", () => {
+            this.skipIntro();
+        });
+    }
+
+    showOpeningScreen() {
+        this.add.text(400, 210, "A NEW JOURNEY AWAITS", {
+            fontSize: "20px",
             color: "#7cffb2",
-            fontStyle: "bold"
+            fontStyle: "bold",
+            letterSpacing: 4
         }).setOrigin(0.5);
 
-        this.add.text(400, 260, "CIPHER VALLEY", {
-            fontSize: "48px",
+        this.add.text(400, 280, "CIPHER VALLEY", {
+            fontSize: "55px",
             color: "#ffffff",
             fontStyle: "bold"
         }).setOrigin(0.5);
 
-        this.add.text(400, 340,
-            "A new journey into the world of programming begins...",
-            {
-                fontSize: "17px",
-                color: "#d0d8df",
-                align: "center"
-            }
-        ).setOrigin(0.5);
-
-        const continueText = this.add.text(
-            400, 470, "PRESS ENTER TO CONTINUE", {
+        const enter = this.add.text(
+            400, 440, "PRESS ENTER TO BEGIN", {
                 fontSize: "18px",
                 color: "#7cffb2",
                 fontStyle: "bold"
@@ -503,20 +507,259 @@ class PrologueScene extends Phaser.Scene {
         ).setOrigin(0.5);
 
         this.tweens.add({
-            targets: continueText,
-            alpha: 0.3,
+            targets: enter,
+            alpha: 0.25,
             duration: 800,
             yoyo: true,
             repeat: -1
         });
 
+        this.add.text(400, 510, "ESC — SKIP INTRO", {
+            fontSize: "12px",
+            color: "#82919c"
+        }).setOrigin(0.5);
+
         this.input.keyboard.once("keydown-ENTER", () => {
-            this.scene.start("GameScene");
+            this.startCinematic();
         });
 
         this.input.keyboard.once("keydown-SPACE", () => {
+            this.startCinematic();
+        });
+    }
+
+    startCinematic() {
+        if (this.introStarted) return;
+        this.introStarted = true;
+
+        this.children.removeAll();
+
+        this.cameras.main.fadeOut(500);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+            this.showSystemSequence();
+            this.cameras.main.fadeIn(700);
+        });
+    }
+
+    showSystemSequence() {
+        this.cameras.main.setBackgroundColor("#05090d");
+
+        this.add.text(400, 100, "CIPHER VALLEY NETWORK", {
+            fontSize: "15px",
+            color: "#7cffb2",
+            letterSpacing: 3
+        }).setOrigin(0.5);
+
+        const lines = [
+            "INITIALIZING SYSTEM...",
+            "ESTABLISHING CONNECTION...",
+            "CONNECTION ESTABLISHED.",
+            "DESTINATION: CIPHER VALLEY."
+        ];
+
+        let currentLine = 0;
+
+        const displayNextLine = () => {
+            if (currentLine >= lines.length) {
+                this.time.delayedCall(1500, () => {
+                    this.showValleyReveal();
+                });
+                return;
+            }
+
+            const line = this.add.text(
+                400,
+                220 + currentLine * 48,
+                "> " + lines[currentLine],
+                {
+                    fontSize: "20px",
+                    color: "#7cffb2",
+                    fontFamily: "monospace"
+                }
+            ).setOrigin(0.5);
+
+            line.setAlpha(0);
+
+            this.tweens.add({
+                targets: line,
+                alpha: 1,
+                duration: 500
+            });
+
+            currentLine++;
+            this.time.delayedCall(1100, displayNextLine);
+        };
+
+        displayNextLine();
+    }
+
+    showValleyReveal() {
+        this.cameras.main.setBackgroundColor("#82b9d1");
+
+        const sky = this.add.graphics();
+
+        // Distant mountains
+        sky.fillStyle(0x526f86);
+        sky.fillPoints([
+            { x: 0, y: 390 },
+            { x: 180, y: 150 },
+            { x: 340, y: 390 },
+            { x: 520, y: 180 },
+            { x: 800, y: 390 }
+        ], true);
+
+        // Near mountains
+        sky.fillStyle(0x304e49);
+        sky.fillPoints([
+            { x: 0, y: 440 },
+            { x: 180, y: 280 },
+            { x: 370, y: 450 },
+            { x: 570, y: 260 },
+            { x: 800, y: 440 }
+        ], true);
+
+        // Valley ground
+        sky.fillStyle(0x527d4b);
+        sky.fillRect(0, 390, 800, 210);
+
+        // Winding road
+        sky.lineStyle(38, 0xc9ae78);
+        sky.beginPath();
+        sky.moveTo(400, 600);
+        sky.lineTo(440, 510);
+        sky.lineTo(360, 450);
+        sky.lineTo(400, 400);
+        sky.strokePath();
+
+        const title = this.add.text(
+            400, 180, "CIPHER VALLEY", {
+                fontSize: "48px",
+                color: "#ffffff",
+                fontStyle: "bold",
+                stroke: "#263c36",
+                strokeThickness: 7
+            }
+        ).setOrigin(0.5);
+
+        title.setAlpha(0);
+
+        this.tweens.add({
+            targets: title,
+            alpha: 1,
+            duration: 1800,
+            ease: "Power2"
+        });
+
+        const story = this.add.text(
+            400, 275,
+            "A place where curiosity becomes discovery...",
+            {
+                fontSize: "19px",
+                color: "#ffffff",
+                stroke: "#263c36",
+                strokeThickness: 4
+            }
+        ).setOrigin(0.5);
+
+        story.setAlpha(0);
+
+        this.tweens.add({
+            targets: story,
+            alpha: 1,
+            duration: 1500,
+            delay: 1000
+        });
+
+        this.time.delayedCall(5000, () => {
+            this.showAccessTab();
+        });
+    }
+
+    showAccessTab() {
+        this.cameras.main.fadeOut(700);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+            this.children.removeAll();
+            this.cameras.main.setBackgroundColor("#101820");
+
+            this.add.text(400, 150, "NEW ARRIVAL REGISTERED", {
+                fontSize: "17px",
+                color: "#7cffb2",
+                fontStyle: "bold",
+                letterSpacing: 2
+            }).setOrigin(0.5);
+
+            const tab = this.add.rectangle(
+                400, 310, 190, 230, 0x243d4a
+            );
+
+            tab.setStrokeStyle(3, 0x7cffb2);
+
+            this.add.text(400, 245, "CIPHER", {
+                fontSize: "25px",
+                color: "#ffffff",
+                fontStyle: "bold"
+            }).setOrigin(0.5);
+
+            this.add.text(400, 280, "ACCESS TAB", {
+                fontSize: "14px",
+                color: "#7cffb2"
+            }).setOrigin(0.5);
+
+            this.add.text(400, 340, "PROFILE  •  QUESTS", {
+                fontSize: "12px",
+                color: "#ffffff"
+            }).setOrigin(0.5);
+
+            this.add.text(400, 375, "INVENTORY  •  PROGRESS", {
+                fontSize: "12px",
+                color: "#ffffff"
+            }).setOrigin(0.5);
+
+            this.tweens.add({
+                targets: tab,
+                y: 295,
+                duration: 1200,
+                ease: "Back.Out"
+            });
+
+            this.add.text(
+                400, 480,
+                "PERSONAL ACCESS TAB ISSUED.",
+                {
+                    fontSize: "17px",
+                    color: "#7cffb2",
+                    fontStyle: "bold"
+                }
+            ).setOrigin(0.5);
+
+            this.time.delayedCall(3500, () => {
+                this.finishIntro();
+            });
+
+            this.cameras.main.fadeIn(800);
+        });
+    }
+
+    finishIntro() {
+        if (this.introFinished) return;
+        this.introFinished = true;
+
+        this.cameras.main.fadeOut(1000);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
             this.scene.start("GameScene");
         });
+    }
+
+    skipIntro() {
+        if (!this.introStarted) {
+            this.startCinematic();
+            return;
+        }
+
+        this.finishIntro();
     }
 }
 
@@ -971,9 +1214,21 @@ class GameScene extends Phaser.Scene {
             this.playerTotalXP = cppPlayerModule.ccall("playerGetXP", "number", [], []);
             this.dsaXP = this.playerTotalXP;
             if (this.playerStatsText) {
-                this.playerStatsText.setText(
-                    "LEVEL " + this.playerLevel + "   ·   XP " + this.playerTotalXP + "\nENERGY  " + this.playerEnergy + "/100   ·   SHIFT sprint"
-                );
+              this.playerStatsText.setText(
+    "LEVEL " + this.playerLevel + "   ·   XP " + this.playerTotalXP
+);
+
+if (this.energyLabelText) {
+    this.energyLabelText.setText("ENERGY  " + this.playerEnergy + "/100");
+}
+
+if (this.energyBarFill) {
+    this.energyBarFill.clear();
+    this.energyBarFill.fillStyle(0x57cc99, 1);
+    this.energyBarFill.fillRoundedRect(
+        515, 67, 250 * (this.playerEnergy / 100), 10, 5
+    );
+}
             }
         } catch (error) {
             console.error("Could not read C++ Player stats:", error);
@@ -2326,24 +2581,37 @@ class GameScene extends Phaser.Scene {
 
         // Compact RPG-style HUD panels keep quest and player status readable
         // without covering the center of the campus.
+        
         this.hudPanels = this.add.graphics().setDepth(4);
         this.hudPanels.setScrollFactor(0);
         this.hudPanels.fillStyle(0x112333, 0.94);
-        this.hudPanels.fillRoundedRect(8, 8, 320, 246, 14);
+        this.hudPanels.fillRoundedRect(8, 8, 280, 238, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
-        this.hudPanels.strokeRoundedRect(8, 8, 320, 246, 14);
+        this.hudPanels.strokeRoundedRect(8, 8, 280, 238, 14);
+        // Subtle separators give the HUD a cleaner RPG menu structure.
+        this.hudPanels.lineStyle(1, 0x426174, 0.85);
+        this.hudPanels.lineBetween(20, 31, 276, 31);
+        this.hudPanels.lineBetween(20, 108, 276, 108);
         this.hudPanels.fillStyle(0x112333, 0.94);
         this.hudPanels.fillRoundedRect(500, 8, 292, 110, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
         this.hudPanels.strokeRoundedRect(500, 8, 292, 110, 14);
 
         // QUEST STATUS HUD
+
+this.add.text(22, 17, "ACTIVE QUEST", {
+    fontSize: "10px",
+    color: "#8da9bb",
+    fontStyle: "bold",
+    letterSpacing: 2
+}).setDepth(5).setScrollFactor(0);
+
         this.questStatusText = this.add.text(
-            22, 20,
+            22, 37,
             "STORY QUEST · COFFEE CRISIS",
             {
                 fontSize: "14px",
-                color: "#9cebd3",
+                color: "#ffd166",
                 fontStyle: "bold"
             }
         );
@@ -2390,13 +2658,13 @@ class GameScene extends Phaser.Scene {
         this.inventoryHintText.on("pointerover", () => this.inventoryHintText.setColor("#7cffb2"));
         this.inventoryHintText.on("pointerout", () => this.inventoryHintText.setColor("#c6d5e1"));
 
-        this.treeHintText = this.add.text(22, 183, "T  ·  TREE TRAINING", {
+        this.treeHintText = this.add.text(22, 178, "T  ·  TREE TRAINING", {
             fontSize: "12px", color: "#9cebd3"
         });
         this.treeHintText.setDepth(5);
         this.treeHintText.setScrollFactor(0);
 
-        this.integrationHintText = this.add.text(22, 215, "H History   Q Tasks   B Quests", {
+        this.integrationHintText = this.add.text(22, 211, "H History   Q Tasks   B Quests", {
             fontSize: "11px", color: "#c6d5e1"
         });
         this.integrationHintText.setDepth(5);
@@ -2408,7 +2676,7 @@ class GameScene extends Phaser.Scene {
         // Continuous campus clock: one game minute per two real seconds.
         this.gameMinutes = Phaser.Math.Clamp(Number(gameState.gameMinutes ?? 360), 0, 1439);
         this.gameDay = Math.max(1, Number(gameState.gameDay) || 1);
-        this.gameClockText = this.add.text(515, 78, formatGameClock(), {
+        this.gameClockText = this.add.text(515, 91, formatGameClock(), {
             fontSize: "14px", color: "#fff4d6", fontStyle: "bold"
         });
         this.gameClockText.setDepth(5);
@@ -2422,11 +2690,13 @@ class GameScene extends Phaser.Scene {
         gameClockListeners.add(this.gameClockListener);
         startGameClock();
 
-        this.coffeeQuestStatusText = this.add.text(22, 151, "Next · Talk to your friend", {
-            fontSize: "12px", color: "#e7eff6"
-        });
-        this.coffeeQuestStatusText.setDepth(5);
-        this.coffeeQuestStatusText.setScrollFactor(0);
+       this.coffeeQuestStatusText = this.add.text(22, 66, "Next · Talk to your friend", {
+    fontSize: "12px",
+    color: "#e7eff6",
+    wordWrap: { width: 245 }
+});
+this.coffeeQuestStatusText.setDepth(5);
+this.coffeeQuestStatusText.setScrollFactor(0);
 
         this.playerStatsText = this.add.text(515, 20, "PLAYER  ·  Loading…", {
             fontSize: "13px",
@@ -2435,6 +2705,28 @@ class GameScene extends Phaser.Scene {
         });
         this.playerStatsText.setDepth(5);
         this.playerStatsText.setScrollFactor(0);
+
+// ENERGY BAR HUD
+this.energyLabelText = this.add.text(515, 43, "ENERGY  100/100", {
+    fontSize: "11px",
+    color: "#b8c7d9",
+    fontStyle: "bold"
+}).setDepth(5).setScrollFactor(0);
+
+this.energyBarBackground = this.add.graphics()
+    .setDepth(5)
+    .setScrollFactor(0);
+
+this.energyBarBackground.fillStyle(0x263746, 1);
+this.energyBarBackground.fillRoundedRect(515, 67, 250, 10, 5);
+
+this.energyBarFill = this.add.graphics()
+    .setDepth(6)
+    .setScrollFactor(0);
+
+this.energyBarFill.fillStyle(0x57cc99, 1);
+this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
+
         cppPlayerReady.then((module) => {
             if (module) this.syncPlayerStats();
             else if (this.playerStatsText) this.playerStatsText.setText("C++ Player module unavailable");
@@ -2468,7 +2760,7 @@ class GameScene extends Phaser.Scene {
     }
 
     createMiniMap() {
-        this.minimapPanel = this.add.rectangle(700, 199, 184, 136, 0x112333, 0.96)
+        this.minimapPanel = this.add.rectangle(700, 199, 184, 136, 0x112333, 0.97)
             .setStrokeStyle(2, 0x5cc7b2).setDepth(6).setScrollFactor(0);
         this.minimapLabel = this.add.text(618, 134, "CAMPUS MAP", {
             fontSize: "11px", color: "#9cebd3", fontStyle: "bold"
@@ -3626,6 +3918,14 @@ class InteriorScene extends Phaser.Scene {
             persistGameState();
         }
         this.scene.stop("InteriorScene");
+                // Automatically introduce the mentor on the first hostel exit.
+        if (this.location === "hostel" && campus && !gameState.mentorIntroSeen) {
+            campus.time.delayedCall(200, () => {
+                if (!gameState.mentorIntroSeen) {
+                    campus.showMentorIntroduction();
+                }
+            });
+        }
     }
 
     update() {
