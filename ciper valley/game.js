@@ -94,6 +94,29 @@ function loadGameState() {
     }
 }
 
+// ==========================================
+// LAUNCH FLOW: NEW GAME OR CONTINUE
+// ==========================================
+
+const launchParams = new URLSearchParams(
+    globalThis.location?.search || ""
+);
+
+let hasValidSave = false;
+
+try {
+    const savedData = JSON.parse(
+        globalThis.localStorage?.getItem(SAVE_KEY) || "null"
+    );
+
+    hasValidSave = savedData?.version === 1;
+} catch (error) {
+    console.warn("Could not check existing save:", error);
+}
+
+const shouldPlayPrologue =
+    launchParams.has("newgame") || !hasValidSave;
+
 const gameState = loadGameState();
 
 function persistGameState() {
@@ -416,6 +439,84 @@ function updatePlayerAnimation(player, velocityX, velocityY) {
     } else {
         player.anims.stop();
         player.setFrame(`d${player.lastDirection || 0}f0`);
+    }
+}
+
+// ==========================================
+// BOOT SCENE — CHOOSE THE GAME START
+// ==========================================
+
+class BootScene extends Phaser.Scene {
+    constructor() {
+        super("BootScene");
+    }
+
+    create() {
+        if (shouldPlayPrologue) {
+            this.scene.start("PrologueScene");
+        } else {
+            this.scene.start("GameScene");
+        }
+    }
+}
+
+
+// ==========================================
+// PROLOGUE SCENE — OPENING
+// ==========================================
+
+class PrologueScene extends Phaser.Scene {
+    constructor() {
+        super("PrologueScene");
+    }
+
+    create() {
+        this.cameras.main.setBackgroundColor("#101820");
+
+        this.add.text(400, 190, "WELCOME TO", {
+            fontSize: "24px",
+            color: "#7cffb2",
+            fontStyle: "bold"
+        }).setOrigin(0.5);
+
+        this.add.text(400, 260, "CIPHER VALLEY", {
+            fontSize: "48px",
+            color: "#ffffff",
+            fontStyle: "bold"
+        }).setOrigin(0.5);
+
+        this.add.text(400, 340,
+            "A new journey into the world of programming begins...",
+            {
+                fontSize: "17px",
+                color: "#d0d8df",
+                align: "center"
+            }
+        ).setOrigin(0.5);
+
+        const continueText = this.add.text(
+            400, 470, "PRESS ENTER TO CONTINUE", {
+                fontSize: "18px",
+                color: "#7cffb2",
+                fontStyle: "bold"
+            }
+        ).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: continueText,
+            alpha: 0.3,
+            duration: 800,
+            yoyo: true,
+            repeat: -1
+        });
+
+        this.input.keyboard.once("keydown-ENTER", () => {
+            this.scene.start("GameScene");
+        });
+
+        this.input.keyboard.once("keydown-SPACE", () => {
+            this.scene.start("GameScene");
+        });
     }
 }
 
@@ -3581,7 +3682,7 @@ const config = {
 
     },
 
-    scene: [GameScene, InteriorScene]
+    scene: [BootScene, PrologueScene, GameScene, InteriorScene]
 
 };
 
