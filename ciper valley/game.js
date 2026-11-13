@@ -372,31 +372,98 @@ function createPixelCharacterTexture(scene, key, shirtColor) {
     const frameHeight = 48;
     const texture = scene.textures.createCanvas(key, frameWidth * 4, frameHeight * 4);
     const context = texture.context;
-    const drawPixel = (x, y, width, height, color) => {
+    context.imageSmoothingEnabled = false;
+    const px = (x, y, w, h, color) => {
         context.fillStyle = color;
-        context.fillRect(x, y, width, height);
+        context.fillRect(x, y, w, h);
     };
+    const isMentor = key.includes('mentor');
+    const isAssistant = key.includes('assistant');
+    const isShopkeeper = key.includes('shopkeeper');
+    const isFriend = key.includes('friend');
+    const skin = isMentor ? '#c58b68' : isFriend ? '#e0aa82' : '#d99b72';
+    const hair = isMentor ? '#b8b8ad' : isAssistant ? '#292b38' : isShopkeeper ? '#493126' : isFriend ? '#493047' : '#30251f';
+    const pants = isShopkeeper ? '#34465a' : isMentor ? '#343e50' : '#34445b';
+    const accent = isMentor ? '#f0c66b' : isAssistant ? '#b7eee0' : isShopkeeper ? '#fff0b8' : isFriend ? '#e9b7ff' : '#f5d27a';
     for (let direction = 0; direction < 4; direction++) {
         for (let frame = 0; frame < 4; frame++) {
             const ox = frame * frameWidth;
             const oy = direction * frameHeight;
             const step = frame === 1 ? -2 : frame === 3 ? 2 : 0;
-            drawPixel(ox + 9, oy + 3, 14, 12, "#d9a477");
-            drawPixel(ox + 8, oy + 2, 16, 6, "#32231f");
-            if (direction === 3) drawPixel(ox + 8, oy + 4, 16, 10, "#32231f");
-            if (direction !== 3) {
-                drawPixel(ox + 11, oy + 9, 2, 2, "#231b1a");
-                drawPixel(ox + 19, oy + 9, 2, 2, "#231b1a");
+            // Soft ground shadow and shoes
+            px(ox + 7, oy + 43, 19, 3, '#24302e');
+            px(ox + 8 + step, oy + 41, 8, 4, '#252936');
+            px(ox + 17 - step, oy + 41, 8, 4, '#252936');
+            px(ox + 9 + step, oy + 41, 5, 1, '#8e9aa4');
+            px(ox + 18 - step, oy + 41, 5, 1, '#8e9aa4');
+            // Legs and clothing silhouette
+            px(ox + 9 + step, oy + 29, 6, 13, pants);
+            px(ox + 17 - step, oy + 29, 6, 13, pants);
+            px(ox + 8 + step, oy + 30, 2, 10, '#52627a');
+            px(ox + 22 - step, oy + 30, 2, 10, '#52627a');
+            // Arms behind torso
+            px(ox + 5, oy + 18, 5, 12, shirtColor);
+            px(ox + 22, oy + 18, 5, 12, shirtColor);
+            px(ox + 5, oy + 27, 5, 4, skin);
+            px(ox + 22, oy + 27, 5, 4, skin);
+            // Torso, collar and role-specific clothing details
+            px(ox + 8, oy + 16, 16, 15, shirtColor);
+            px(ox + 10, oy + 16, 12, 2, accent);
+            px(ox + 7, oy + 20, 3, 8, '#ffffff');
+            px(ox + 22, oy + 20, 3, 8, '#ffffff');
+            if (isMentor) {
+                px(ox + 14, oy + 19, 4, 10, '#f1d28b');
+                px(ox + 13, oy + 22, 6, 2, '#fff2c6');
+            } else if (isAssistant) {
+                px(ox + 13, oy + 19, 6, 11, '#e8f5ef');
+                px(ox + 15, oy + 21, 2, 7, '#2e8278');
+            } else if (isShopkeeper) {
+                px(ox + 10, oy + 20, 12, 9, '#8d4f2d');
+                px(ox + 12, oy + 22, 8, 2, '#f3d58a');
+            } else if (isFriend) {
+                px(ox + 10, oy + 20, 3, 8, '#d7a6ef');
+                px(ox + 19, oy + 20, 3, 8, '#d7a6ef');
+            } else {
+                // Player's small explorer-style chest badge and backpack straps
+                px(ox + 9, oy + 18, 2, 11, '#176f68');
+                px(ox + 21, oy + 18, 2, 11, '#176f68');
+                px(ox + 14, oy + 22, 4, 4, '#f4d16c');
             }
-            drawPixel(ox + 7, oy + 16, 18, 14, shirtColor);
-            drawPixel(ox + 4, oy + 17, 4, 11, shirtColor);
-            drawPixel(ox + 24, oy + 17, 4, 11, shirtColor);
-            drawPixel(ox + 9 + step, oy + 29, 6, 13, "#303d5a");
-            drawPixel(ox + 17 - step, oy + 29, 6, 13, "#303d5a");
-            drawPixel(ox + 8 + step, oy + 41, 8, 4, "#2a2423");
-            drawPixel(ox + 16 - step, oy + 41, 8, 4, "#2a2423");
-            if (direction === 1) drawPixel(ox + 7, oy + 3, 4, 12, "#32231f");
-            if (direction === 2) drawPixel(ox + 21, oy + 3, 4, 12, "#32231f");
+            // Neck and face
+            px(ox + 13, oy + 12, 6, 6, skin);
+            px(ox + 9, oy + 4, 14, 12, skin);
+            px(ox + 8, oy + 8, 2, 4, skin);
+            px(ox + 22, oy + 8, 2, 4, skin);
+            // Hair silhouette varies by role
+            px(ox + 8, oy + 2, 16, 6, hair);
+            px(ox + 7, oy + 5, 4, 7, hair);
+            px(ox + 21, oy + 5, 4, 7, hair);
+            if (direction === 3) {
+                px(ox + 8, oy + 4, 16, 11, hair);
+                px(ox + 10, oy + 12, 12, 3, hair);
+            } else {
+                px(ox + 11, oy + 9, 2, 2, '#29232a');
+                px(ox + 19, oy + 9, 2, 2, '#29232a');
+                px(ox + 13, oy + 13, 6, 1, '#9d5c54');
+            }
+            if (isMentor) {
+                px(ox + 7, oy + 2, 18, 3, '#e1dfd1');
+                px(ox + 9, oy + 1, 14, 2, '#f5f0dc');
+            } else if (isAssistant) {
+                px(ox + 8, oy + 1, 16, 3, '#292b38');
+                px(ox + 12, oy + 1, 8, 2, '#59647b');
+            } else if (isShopkeeper) {
+                px(ox + 7, oy + 1, 18, 4, '#6c4327');
+                px(ox + 9, oy, 14, 2, '#dca84f');
+            } else if (isFriend) {
+                px(ox + 8, oy + 1, 16, 4, '#5b3a61');
+                px(ox + 20, oy + 4, 4, 7, '#5b3a61');
+            }
+            // Small identity details remain readable at the game's sprite scale
+            if (isMentor) px(ox + 23, oy + 19, 2, 7, '#f0c66b'); // mentor badge
+            if (isAssistant) px(ox + 22, oy + 23, 3, 4, '#d9f3ed'); // lab badge
+            if (isShopkeeper) px(ox + 13, oy + 28, 6, 3, '#f3d58a'); // apron pocket
+            if (isFriend) px(ox + 23, oy + 17, 2, 5, '#f1c7ff');
         }
     }
     texture.refresh();
@@ -405,6 +472,47 @@ function createPixelCharacterTexture(scene, key, shirtColor) {
             texture.add(`d${direction}f${frame}`, 0, frame * frameWidth, direction * frameHeight, frameWidth, frameHeight);
         }
     }
+}
+
+function createCampusBuilding(scene, x, y, width, height, palette, label, labelSize = '16px') {
+    // Decorative layers sit behind the original static body, so the existing
+    // physics collider and entrance coordinates remain unchanged.
+    scene.add.rectangle(x + 4, y + 9, width + 8, height + 8, 0x172b25, 0.28).setDepth(0);
+    const roof = scene.add.rectangle(x, y - height * 0.38, width + 16, height * 0.34, palette.roof)
+        .setStrokeStyle(3, palette.trim).setDepth(1);
+    scene.add.rectangle(x, y - height * 0.22, width + 5, 7, palette.highlight).setDepth(2);
+    const body = scene.add.rectangle(x, y, width, height, palette.wall)
+        .setStrokeStyle(4, palette.trim).setDepth(2);
+    // Upper fascia and lower stone foundation
+    scene.add.rectangle(x, y - height * 0.34, width - 8, 8, palette.highlight).setDepth(3);
+    scene.add.rectangle(x, y + height * 0.39, width - 8, 9, palette.base).setDepth(3);
+    // Repeated windows, each with a frame, glass and central mullion
+    const windowY = y - height * 0.08;
+    [-0.31, 0.31].forEach(offset => {
+        const wx = x + width * offset;
+        scene.add.rectangle(wx, windowY, Math.max(20, width * 0.19), height * 0.31, palette.trim).setDepth(4);
+        scene.add.rectangle(wx, windowY, Math.max(15, width * 0.15), height * 0.24, palette.glass).setDepth(5);
+        scene.add.rectangle(wx, windowY, 3, height * 0.24, palette.highlight).setDepth(6);
+        scene.add.rectangle(wx, windowY, Math.max(15, width * 0.15), 3, palette.highlight).setDepth(6);
+    });
+    // Signboard gives each campus building a clear identity
+    const signY = y - height * 0.52;
+    scene.add.rectangle(x, signY, Math.min(width * 0.76, 190), 23, 0x183b3c)
+        .setStrokeStyle(2, palette.highlight).setDepth(7);
+    scene.add.text(x, signY, label, {
+        fontFamily: 'Arial', fontSize: labelSize, color: '#fff8df',
+        fontStyle: 'bold', align: 'center', stroke: '#173332', strokeThickness: 2
+    }).setOrigin(0.5).setDepth(8);
+    return body;
+}
+
+function addCampusTree(scene, x, y, scale = 1) {
+    scene.add.ellipse(x + 3 * scale, y + 17 * scale, 42 * scale, 13 * scale, 0x183526, 0.25);
+    scene.add.rectangle(x, y + 12 * scale, 9 * scale, 25 * scale, 0x76502f).setStrokeStyle(1, 0x4c3928);
+    scene.add.circle(x - 8 * scale, y - 3 * scale, 15 * scale, 0x246342).setStrokeStyle(2, 0x6da66b);
+    scene.add.circle(x + 8 * scale, y - 7 * scale, 17 * scale, 0x2e7548).setStrokeStyle(2, 0x82b66d);
+    scene.add.circle(x, y - 17 * scale, 13 * scale, 0x3d8951).setStrokeStyle(2, 0x9acb76);
+    scene.add.circle(x - 5 * scale, y - 20 * scale, 4 * scale, 0xb4d889, 0.75);
 }
 
 function ensureCharacterAnimations(scene) {
@@ -1561,26 +1669,31 @@ if (this.energyBarFill) {
             this.inventoryObjects.push(obj);
             return obj;
         };
-        addBase(this.add.rectangle(400, 300, 800, 600, 0x07131c, 0.94));
-        addBase(this.add.rectangle(400, 300, 748, 548, 0x142733, 1).setStrokeStyle(3, 0x5cc7b2));
-        addBase(this.add.rectangle(400, 300, 730, 530, 0x172f3b, 1).setStrokeStyle(1, 0x355766));
-        addBase(this.add.text(400, 48, "CIPHER VALLEY  /  PERSONAL ACCESS TAB", {
-            fontSize: "23px", color: "#f1f7f5", fontStyle: "bold", letterSpacing: 1
+        addBase(this.add.rectangle(400, 300, 800, 600, 0x06111a, 0.96));
+        addBase(this.add.rectangle(400, 300, 758, 558, 0x10232d, 1).setStrokeStyle(3, 0x5cc7b2));
+        addBase(this.add.rectangle(400, 300, 738, 538, 0x17313d, 1).setStrokeStyle(1, 0x42616d));
+        addBase(this.add.rectangle(400, 20, 720, 3, 0x67d7bd));
+        addBase(this.add.circle(57, 48, 5, 0xffd166));
+        addBase(this.add.text(400, 43, "CIPHER VALLEY  /  PERSONAL ACCESS TAB", {
+            fontSize: "23px", color: "#f4f8f6", fontStyle: "bold", letterSpacing: 1
         }).setOrigin(0.5));
-        addBase(this.add.text(400, 78, "YOUR CAMPUS COMPANION  ·  PROFILE, MISSIONS & SYSTEMS", {
-            fontSize: "11px", color: "#8fb9b8", letterSpacing: 1
+        addBase(this.add.text(400, 76, "YOUR CAMPUS COMPANION   •   PROFILE, MISSIONS & SYSTEMS", {
+            fontSize: "11px", color: "#91c4bd", letterSpacing: 1
         }).setOrigin(0.5));
+        addBase(this.add.text(84, 105, "VALLEY LINK  ●  ONLINE", {
+            fontSize: "9px", color: "#75dfb7", fontStyle: "bold", letterSpacing: 1
+        }));
 
         const tabDefs = [
-            [125, "PROFILE", "profile"], [308, "INVENTORY", "inventory"],
-            [492, "QUEST LOG", "quests"], [675, "SYSTEMS", "systems"]
+            [125, "01  PROFILE", "profile"], [308, "02  INVENTORY", "inventory"],
+            [492, "03  QUEST LOG", "quests"], [675, "04  SYSTEMS", "systems"]
         ];
         this.accessTabButtons = {};
         tabDefs.forEach(([x, label, page]) => {
-            const bg = addBase(this.add.rectangle(x, 125, 166, 34, 0x203b47)
+            const bg = addBase(this.add.rectangle(x, 130, 166, 38, 0x203b47)
                 .setStrokeStyle(1, 0x52717c).setInteractive({ useHandCursor: true }));
-            const txt = addBase(this.add.text(x, 125, label, {
-                fontSize: "12px", color: "#c8d8df", fontStyle: "bold", letterSpacing: 1
+            const txt = addBase(this.add.text(x, 130, label, {
+                fontSize: "11px", color: "#c8d8df", fontStyle: "bold", letterSpacing: 1
             }).setOrigin(0.5));
             bg.on("pointerover", () => { if (this.accessTabPage !== page) bg.setFillStyle(0x2a4d58); });
             bg.on("pointerout", () => { if (this.accessTabPage !== page) bg.setFillStyle(0x203b47); });
@@ -1588,14 +1701,17 @@ if (this.energyBarFill) {
             txt.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.renderAccessTabPage(page));
             this.accessTabButtons[page] = { bg, txt };
         });
-        addBase(this.add.rectangle(400, 335, 690, 382, 0x1c3541, 1).setStrokeStyle(1, 0x42616d));
-        addBase(this.add.text(400, 570, "I / ESC  ·  CLOSE ACCESS TAB", {
-            fontSize: "11px", color: "#8faeb8", fontStyle: "bold", letterSpacing: 1
+        addBase(this.add.rectangle(400, 340, 690, 374, 0x1a3541, 1).setStrokeStyle(1, 0x42616d));
+        addBase(this.add.rectangle(400, 527, 650, 1, 0x355766));
+        addBase(this.add.text(400, 565, "I  /  ESC     •     CLOSE ACCESS TAB", {
+            fontSize: "10px", color: "#8faeb8", fontStyle: "bold", letterSpacing: 1
         }).setOrigin(0.5));
-        const close = addBase(this.add.text(720, 68, "✕", {
-            fontSize: "21px", color: "#f0c77b", backgroundColor: "#263d48",
-            padding: { x: 10, y: 5 }
+        const closeBg = addBase(this.add.rectangle(720, 67, 38, 38, 0x263d48)
+            .setStrokeStyle(1, 0x55717a).setInteractive({ useHandCursor: true }));
+        const close = addBase(this.add.text(720, 67, "×", {
+            fontSize: "25px", color: "#f0c77b"
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        closeBg.on("pointerdown", () => this.closeInventory());
         close.on("pointerdown", () => this.closeInventory());
 
         this.inventoryExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -1619,7 +1735,9 @@ if (this.energyBarFill) {
         const label = (x, y, text, size=14, color="#e8f1f2", style="normal") =>
             add(this.add.text(x, y, text, { fontSize: `${size}px`, color, fontStyle: style, lineSpacing: 7, wordWrap: { width: 610 } }));
         const card = (x, y, w, h, title) => {
+            add(this.add.rectangle(x, y + 3, w, h, 0x102631, 0.55));
             add(this.add.rectangle(x, y, w, h, 0x203b47).setStrokeStyle(1, 0x4c707b));
+            add(this.add.rectangle(x - w/2 + 3, y, 4, h - 2, 0x5cc7b2));
             add(this.add.text(x - w/2 + 18, y - h/2 + 13, title, {
                 fontSize: "12px", color: "#8fe0c6", fontStyle: "bold", letterSpacing: 1
             }));
@@ -1644,32 +1762,40 @@ if (this.energyBarFill) {
         });
 
         if (page === "profile") {
-            label(78, 178, "WELCOME BACK, EXPLORER", 17, "#ffffff", "bold");
-            label(78, 212, `LEVEL  ${this.playerLevel}      TOTAL XP  ${this.playerTotalXP}`, 15, "#ffe08a", "bold");
-            label(78, 250, `ENERGY  ${this.playerEnergy}/100`, 13, "#b8d8e2", "bold");
-            add(this.add.rectangle(400, 292, 610, 16, 0x10232d).setStrokeStyle(1, 0x42616d));
-            add(this.add.rectangle(95 + 305 * (this.playerEnergy / 100), 292, Math.max(2, 610 * (this.playerEnergy / 100)), 10, 0x57cc99).setOrigin(0, 0.5));
-            label(78, 324, `COINS  ${Number(gameState.coins) || 0}       DAY  ${this.gameDay}  ·  ${formatGameClock()}`, 14, "#e8f1f2");
-            label(78, 370, `CURRENT LOCATION  ·  ${String(gameState.location || "campus").toUpperCase()}`, 13, "#9cebd3", "bold");
-            label(78, 415, "Your progress is saved automatically as you explore Cipher Valley.", 12, "#a9bec8");
-            button(400, 490, "VIEW QUEST LOG  ›", () => this.renderAccessTabPage("quests"), 190);
+            card(400, 335, 630, 300, "EXPLORER PROFILE  ·  VALLEY STATUS");
+            add(this.add.circle(145, 270, 38, 0x294d59).setStrokeStyle(2, 0x8be0c2));
+            add(this.add.text(145, 270, "CV", { fontSize: "22px", color: "#ffe08a", fontStyle: "bold" }).setOrigin(0.5));
+            label(205, 232, "WELCOME BACK, EXPLORER", 17, "#ffffff", "bold");
+            label(205, 263, `LEVEL  ${this.playerLevel}     •     TOTAL XP  ${this.playerTotalXP}`, 14, "#ffe08a", "bold");
+            label(105, 326, `ENERGY  ${this.playerEnergy}/100`, 12, "#b8d8e2", "bold");
+            add(this.add.graphics().fillStyle(0x10232d, 1).fillRoundedRect(105, 350, 590, 14, 7).lineStyle(1, 0x42616d).strokeRoundedRect(105, 350, 590, 14, 7));
+            const profileEnergyRatio = Math.max(0, Math.min(100, Number(this.playerEnergy) || 0)) / 100;
+            if (profileEnergyRatio > 0) add(this.add.graphics().fillStyle(0x57cc99, 1).fillRoundedRect(107, 352, Math.max(0, 586 * profileEnergyRatio), 10, 5));
+            add(this.add.rectangle(260, 410, 270, 54, 0x263f4b).setStrokeStyle(1, 0x42616d));
+            add(this.add.rectangle(540, 410, 270, 54, 0x263f4b).setStrokeStyle(1, 0x42616d));
+            label(145, 394, `COINS  ${Number(gameState.coins) || 0}`, 13, "#ffe08a", "bold");
+            label(425, 394, formatGameClock(), 13, "#e8f1f2", "bold");
+            label(105, 455, `CURRENT LOCATION  ·  ${String(gameState.location || "campus").toUpperCase()}`, 12, "#9cebd3", "bold");
+            label(105, 482, "Your progress is saved automatically as you explore Cipher Valley.", 11, "#a9bec8");
+            button(400, 515, "VIEW QUEST LOG  ›", () => this.renderAccessTabPage("quests"), 190);
         } else if (page === "inventory") {
-            card(400, 315, 630, 260, "ITEM STORAGE  ·  C HASH TABLE");
-            this.inventoryListText = add(this.add.text(105, 205, "Loading items from the C hash table...", {
-                fontSize: "13px", color: "#f1f5f9", lineSpacing: 8, wordWrap: { width: 580 }
+            card(400, 320, 630, 250, "ITEM STORAGE  ·  C HASH TABLE");
+            label(105, 218, "YOUR ITEMS", 10, "#9cebd3", "bold");
+            this.inventoryListText = add(this.add.text(105, 242, "Loading items from the C hash table...", {
+                fontSize: "12px", color: "#f1f5f9", lineSpacing: 9, wordWrap: { width: 575 }
             }));
-            this.inventoryMessageText = add(this.add.text(400, 425, this.inventoryMessage || "Items are stored and searched through the C inventory module.", {
-                fontSize: "11px", color: "#ffe08a", align: "center", wordWrap: { width: 590 }
+            this.inventoryMessageText = add(this.add.text(400, 420, this.inventoryMessage || "ITEMS ARE STORED AND SEARCHED THROUGH THE C INVENTORY MODULE.", {
+                fontSize: "10px", color: "#ffe08a", align: "center", wordWrap: { width: 590 }
             }).setOrigin(0.5));
-            button(155, 485, "+ COFFEE", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."), 125);
-            button(300, 485, "+ NOTEBOOK", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."), 135);
-            button(445, 485, "SEARCH COFFEE", () => this.searchInventoryItem("Coffee"), 135);
-            button(590, 485, "USE COFFEE", () => this.useInventoryItem("Coffee", 20), 125);
-            button(270, 530, "USE ENERGY DRINK", () => this.useInventoryItem("Energy Drink", 40), 165);
-            button(465, 530, "USE SNACK", () => this.useInventoryItem("Snack", 10), 135);
+            button(155, 470, "+ COFFEE", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."), 125);
+            button(300, 470, "+ NOTEBOOK", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."), 135);
+            button(445, 470, "SEARCH COFFEE", () => this.searchInventoryItem("Coffee"), 135);
+            button(590, 470, "USE COFFEE", () => this.useInventoryItem("Coffee", 20), 125);
+            button(300, 512, "USE ENERGY DRINK", () => this.useInventoryItem("Energy Drink", 40), 165);
+            button(500, 512, "USE SNACK", () => this.useInventoryItem("Snack", 10), 135);
             this.refreshInventoryList();
         } else if (page === "quests") {
-            label(78, 178, "CAMPUS STORY", 12, "#8fe0c6", "bold");
+            card(400, 350, 630, 320, "CAMPUS STORY  ·  MISSION BOARD");
             const questRows = [
                 ["COFFEE CRISIS", this.coffeeQuestCompleted ? "COMPLETE" : this.coffeeQuestAccepted ? "ACTIVE" : "AVAILABLE"],
                 ["LINKED LIST TRAINING", this.questCompleted ? "COMPLETE" : this.coffeeQuestCompleted ? "AVAILABLE" : "LOCKED"],
@@ -1677,22 +1803,24 @@ if (this.energyBarFill) {
                 ["TREE TRAINING", this.treeChallengeCompleted ? "COMPLETE" : "AVAILABLE"]
             ];
             questRows.forEach(([name, status], i) => {
-                const y = 220 + i * 52;
-                add(this.add.rectangle(400, y + 9, 620, 42, 0x263f4b).setStrokeStyle(1, 0x405f6a));
-                label(100, y, name, 12, "#f1f5f9", "bold");
-                add(this.add.text(690, y, status, {
-                    fontSize: "11px", color: status === "COMPLETE" ? "#7cffb2" : status === "LOCKED" ? "#9aaeb7" : "#ffe08a", fontStyle: "bold"
+                const y = 245 + i * 49;
+                const statusColor = status === "COMPLETE" ? 0x285943 : status === "LOCKED" ? 0x344650 : 0x5b4c2a;
+                add(this.add.rectangle(400, y + 8, 590, 38, 0x263f4b).setStrokeStyle(1, 0x405f6a));
+                add(this.add.circle(125, y + 8, 5, status === "COMPLETE" ? 0x7cffb2 : status === "LOCKED" ? 0x80939b : 0xffd166));
+                label(145, y, name, 11, "#f1f5f9", "bold");
+                add(this.add.text(675, y, status, {
+                    fontSize: "10px", color: status === "COMPLETE" ? "#7cffb2" : status === "LOCKED" ? "#9aaeb7" : "#ffe08a", fontStyle: "bold"
                 }).setOrigin(1, 0));
             });
             const completed = Object.values(this.debugQuestCompleted || {}).filter(Boolean).length;
-            label(78, 440, `DEBUG MISSIONS  ·  ${completed}/4 COMPLETE`, 13, "#ffe08a", "bold");
-            button(400, 500, "OPEN DEBUG QUEUE  ›", () => {
+            label(105, 465, `DEBUG MISSIONS  ·  ${completed}/4 COMPLETE`, 12, "#ffe08a", "bold");
+            button(400, 510, "OPEN DEBUG QUEUE  ›", () => {
                 this.closeInventory();
                 this.showDebugQuestBoard();
             }, 210);
         } else if (page === "systems") {
-            card(225, 315, 300, 260, "CIRCULAR QUEUE  ·  TASKS");
-            card(575, 315, 300, 260, "C STACK  ·  HISTORY");
+            card(225, 335, 300, 270, "CIRCULAR QUEUE  ·  TASKS");
+            card(575, 335, 300, 270, "C STACK  ·  HISTORY");
             const readModuleLines = (module, countName, itemName) => {
                 const out = [];
                 if (!module) return out;
@@ -1704,17 +1832,17 @@ if (this.energyBarFill) {
             };
             const queueLines = readModuleLines(queueModule, "queueGetCount", "queueGetTaskAt");
             const historyLines = readModuleLines(stackModule, "stackGetCount", "stackGetActionAt");
-            label(85, 220, (queueLines.length ? queueLines : this.taskQueueFallback || ["No pending tasks."]).join("\n"), 11, "#e8f1f2");
-            label(435, 220, (historyLines.length ? historyLines : this.actionHistoryFallback || ["No actions recorded."]).slice(-7).join("\n"), 11, "#e8f1f2");
-            button(225, 495, "OPEN TASK QUEUE  [Q]", () => {
+            label(85, 245, (queueLines.length ? queueLines : this.taskQueueFallback || ["No pending tasks."]).join("\n"), 11, "#e8f1f2");
+            label(435, 245, (historyLines.length ? historyLines : this.actionHistoryFallback || ["No actions recorded."]).slice(-7).join("\n"), 11, "#e8f1f2");
+            button(225, 490, "OPEN TASK QUEUE  [Q]", () => {
                 this.closeInventory();
                 this.showIntegrationPanel("queue");
             }, 190);
-            button(575, 495, "OPEN HISTORY  [H]", () => {
+            button(575, 490, "OPEN HISTORY  [H]", () => {
                 this.closeInventory();
                 this.showIntegrationPanel("history");
             }, 190);
-            label(105, 535, "The queue and history are backed by your C data-structure modules.", 10, "#9fb6bf");
+            label(105, 520, "QUEUE + HISTORY ARE BACKED BY YOUR C DATA-STRUCTURE MODULES.", 9, "#9fb6bf");
         }
     }
 
@@ -1766,15 +1894,14 @@ if (this.energyBarFill) {
                 this.inventoryListText.setText("Your inventory is empty.\n\nUse the buttons below to add items.");
                 return;
             }
-            const lines = ["ITEMS IN THE C HASH TABLE", ""];
+            const lines = [];
             for (let i = 0; i < count; i++) {
                 const name = module.ccall("getItemNameAt", "string", ["number"], [i]);
                 const quantity = module.ccall("getItemQuantityAt", "number", ["number"], [i]);
                 const description = module.ccall("getItemDescriptionAt", "string", ["number"], [i]);
-                const shortDescription = description.length > 56 ? `${description.slice(0, 53)}…` : description;
-                lines.push(`• ${name}  × ${quantity}  —  ${shortDescription}`);
+                lines.push(`• ${name}  × ${quantity}\n  ${description}`);
             }
-            this.inventoryListText.setText(lines.join("\n"));
+            this.inventoryListText.setText(lines.join("\n\n"));
         } catch (error) {
             console.error("Could not read C hash-table inventory:", error);
             this.inventoryListText.setText("Could not read inventory. Check the browser console.");
@@ -1825,24 +1952,21 @@ if (this.energyBarFill) {
             return obj;
         };
 
-        add(this.add.rectangle(400, 300, 800, 600, 0x081018, 0.78));
-        add(this.add.rectangle(400, 300, 590, 330, 0x182b35, 1)
-            .setStrokeStyle(3, 0x83c5be));
-
-        add(this.add.text(400, 190, title, {
-            fontSize: "25px",
-            color: "#ffffff",
-            fontStyle: "bold",
-            align: "center",
-            wordWrap: { width: 520 }
-        }).setOrigin(0.5));
-
-        add(this.add.text(400, 275, message, {
-            fontSize: "18px",
-            color: "#e8f1f2",
-            align: "center",
-            lineSpacing: 8,
-            wordWrap: { width: 510 }
+        add(this.add.rectangle(400, 300, 800, 600, 0x06111a, 0.82));
+        add(this.add.rectangle(400, 304, 620, 340, 0x07131c, 0.55));
+        add(this.add.rectangle(400, 300, 610, 330, 0x183541, 1)
+            .setStrokeStyle(3, 0x70d6c2));
+        add(this.add.rectangle(400, 160, 606, 52, 0x234956, 1));
+        add(this.add.circle(123, 160, 13, 0xffd166));
+        add(this.add.circle(123, 160, 6, 0x183541));
+        add(this.add.text(153, 160, title, {
+            fontSize: "19px", color: "#f7fbf8", fontStyle: "bold",
+            letterSpacing: 1, wordWrap: { width: 480 }
+        }).setOrigin(0, 0.5));
+        add(this.add.rectangle(400, 200, 540, 1, 0x42616d));
+        add(this.add.text(400, 286, message, {
+            fontSize: "16px", color: "#dce9eb", align: "center",
+            lineSpacing: 9, wordWrap: { width: 520 }
         }).setOrigin(0.5));
 
         const buttonCount = buttons.length;
@@ -1851,25 +1975,22 @@ if (this.energyBarFill) {
             buttons.map((_, i) => 170 + i * (460 / (buttonCount - 1)));
 
         buttons.forEach((buttonInfo, index) => {
-            const button = add(this.add.text(positions[index], 390, buttonInfo.label, {
-                fontSize: "17px",
-                color: "#ffffff",
-                backgroundColor: "#285943",
-                padding: { x: 14, y: 11 }
+            const buttonBg = add(this.add.rectangle(positions[index], 414, 176, 38, 0x285943)
+                .setStrokeStyle(1, 0x70d6c2).setInteractive({ useHandCursor: true }));
+            const button = add(this.add.text(positions[index], 414, buttonInfo.label, {
+                fontSize: "13px", color: "#ffffff", fontStyle: "bold", letterSpacing: 1
             }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
 
-            button.on("pointerover", () => {
-                button.setStyle({ backgroundColor: "#397957" });
-            });
-            button.on("pointerout", () => {
-                button.setStyle({ backgroundColor: "#285943" });
-            });
-            button.on("pointerdown", () => {
+            buttonBg.on("pointerover", () => buttonBg.setFillStyle(0x397957));
+            button.on("pointerover", () => buttonBg.setFillStyle(0x397957));
+            buttonBg.on("pointerout", () => buttonBg.setFillStyle(0x285943));
+            button.on("pointerout", () => buttonBg.setFillStyle(0x285943));
+            const chooseDialogueOption = () => {
                 this.closeQuestDialogue();
-                if (typeof buttonInfo.callback === "function") {
-                    buttonInfo.callback();
-                }
-            });
+                if (typeof buttonInfo.callback === "function") buttonInfo.callback();
+            };
+            buttonBg.on("pointerdown", chooseDialogueOption);
+            button.on("pointerdown", chooseDialogueOption);
         });
         this.animatePanel(this.questDialogueObjects);
     }
@@ -2459,76 +2580,97 @@ if (this.energyBarFill) {
         const ms = value => value * 1.15;
         this.physics.world.setBounds(0, 0, 1200, 900);
 
-        // CAMPUS BACKGROUND
-        this.campusBackground = this.add.rectangle(
-            600, 450, 1200, 900,
-            0x3a7d44
-        );
-
-        // CAMPUS PATHS
-        this.add.rectangle(
-            600, 480, 1200, 123,
-            0xc2a878
-        );
-
-        this.add.rectangle(
-            750, 480, 123, 900,
-            0xc2a878
-        );
+        // CAMPUS ENVIRONMENT — layered, colourful pixel-RPG-style grounds.
+        this.campusBackground = this.add.rectangle(600, 450, 1200, 900, 0x4f9858).setDepth(-10);
+        const groundDetails = this.add.graphics().setDepth(-9);
+        groundDetails.fillStyle(0x75b968, 0.32);
+        for (let row = 0; row < 19; row++) {
+            for (let col = 0; col < 25; col++) {
+                const gx = 18 + col * 49 + ((row % 2) * 13);
+                const gy = 18 + row * 47;
+                groundDetails.fillRect(gx, gy, 12, 3);
+                if ((row + col) % 3 === 0) groundDetails.fillRect(gx + 17, gy + 9, 4, 4);
+            }
+        }
+        // Main campus paths with darker edging, warm paving and tile seams.
+        this.add.rectangle(600, 480, 1200, 142, 0x8b7653).setDepth(-8);
+        this.add.rectangle(600, 480, 1200, 126, 0xd8bd83).setDepth(-7);
+        this.add.rectangle(750, 480, 142, 900, 0x8b7653).setDepth(-8);
+        this.add.rectangle(750, 480, 126, 900, 0xd8bd83).setDepth(-7);
+        const pathLines = this.add.graphics().setDepth(-6);
+        pathLines.lineStyle(2, 0xb79b68, 0.55);
+        for (let x = 35; x < 1200; x += 62) pathLines.lineBetween(x, 420, x, 540);
+        for (let y = 25; y < 900; y += 62) pathLines.lineBetween(690, y, 810, y);
+        // Small grass beds and flower clusters break up the open green areas.
+        [[55,250],[330,270],[520,270],[930,260],[1010,610],[360,700],[560,760],[100,700]].forEach(([x,y], i) => {
+            this.add.ellipse(x, y + 8, 78, 30, 0x347a46, 0.55).setDepth(-5);
+            [0,1,2,3].forEach(j => {
+                this.add.circle(x - 22 + j * 14, y - (j % 2) * 7, 3, [0xf5d77b,0xf2a6a6,0xf4e9c1,0xd9b4f0][(i+j)%4]).setDepth(-4);
+            });
+        });
 
         // PROGRAMMING LAB
-        this.lab = this.add.rectangle(
-            mx(180), my(150), ms(200), ms(108),
-            0x555555
-        );
-
-        this.add.text(
-            mx(105), my(135),
-            "PROGRAMMING LAB",
-            {
-                fontSize: "18px",
-                color: "#ffffff"
-            }
-        );
+        this.lab = createCampusBuilding(this, mx(180), my(150), ms(200), ms(108), {
+            wall: 0x668e9a, roof: 0x294f62, trim: 0x173d50,
+            highlight: 0x9ed8d8, glass: 0x9bd6df, base: 0x3c6570
+        }, 'PROGRAMMING LAB', '15px');
+        this.add.rectangle(mx(180), my(150) + 12, 34, 28, 0x284b59).setStrokeStyle(2, 0xe6d49c).setDepth(9);
+        this.add.text(mx(180), my(150) + 12, '</>', { fontSize: '13px', color: '#f7e6a5', fontStyle: 'bold' }).setOrigin(0.5).setDepth(10);
 
         // HOSTEL
-        this.hostel = this.add.rectangle(
-            mx(660), my(150), ms(166), ms(108),
-            0x8b5a2b
-        );
+        this.hostel = createCampusBuilding(this, mx(660), my(150), ms(166), ms(108), {
+            wall: 0xb77d55, roof: 0x74432f, trim: 0x553326,
+            highlight: 0xf1c58c, glass: 0x9ed3df, base: 0x86543a
+        }, 'HOSTEL', '16px');
+        this.add.rectangle(mx(660), my(150) + 31, 24, 39, 0x70452f).setStrokeStyle(2, 0xf5d39a).setDepth(9);
+        this.add.circle(mx(660) + 7, my(150) + 31, 2, 0xf6d47e).setDepth(10);
+        this.add.rectangle(mx(180), my(150) + 31, 24, 39, 0x244b5a).setStrokeStyle(2, 0xf5d39a).setDepth(9);
+        // Original door interaction markers are deliberately kept at their exact positions.
+        this.hostelDoor = this.add.circle(mx(660), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
+        this.labDoor = this.add.circle(mx(180), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
 
-        this.add.text(
-            mx(615), my(135),
-            "HOSTEL",
-            {
-                fontSize: "18px",
-                color: "#ffffff"
-            }
-        );
+        // LIBRARY, CANTEEN AND CAMPUS SHOP — same collision bodies, richer facades.
+        this.library = createCampusBuilding(this, mx(115), my(475), ms(140), ms(90), {
+            wall: 0x8977b6, roof: 0x514478, trim: 0x342b58,
+            highlight: 0xd8c9ff, glass: 0xb9d9ed, base: 0x62558b
+        }, 'LIBRARY', '15px');
+        this.add.rectangle(mx(115), my(475) + 26, 21, 34, 0x44365f).setStrokeStyle(2, 0xe7d9a9).setDepth(9);
+        this.libraryDoor = this.add.circle(mx(115), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
+        this.canteen = createCampusBuilding(this, mx(400), my(475), ms(140), ms(90), {
+            wall: 0xd38a5c, roof: 0x8a4934, trim: 0x603b2b,
+            highlight: 0xffd5a1, glass: 0xb8e0e1, base: 0x9c5e3e
+        }, 'CANTEEN', '15px');
+        this.add.rectangle(mx(400), my(475) + 26, 21, 34, 0x70432e).setStrokeStyle(2, 0xffdda9).setDepth(9);
+        this.canteenDoor = this.add.circle(mx(400), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
+        this.campusShop = createCampusBuilding(this, mx(685), my(490), ms(140), ms(78), {
+            wall: 0x5d91a5, roof: 0x31566e, trim: 0x203e54,
+            highlight: 0xb6e5ff, glass: 0xa6dce8, base: 0x3d6e82
+        }, 'CAMPUS SHOP', '13px');
+        this.add.rectangle(mx(685), my(490) + 24, 21, 31, 0x28495c).setStrokeStyle(2, 0xd5eff0).setDepth(9);
+        this.shopDoor = this.add.circle(mx(685), my(539), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
 
-        this.hostelDoor = this.add.circle(mx(660), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.labDoor = this.add.circle(mx(180), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-
-        // Additional campus facilities with their own playable interiors.
-        this.library = this.add.rectangle(mx(115), my(475), ms(140), ms(90), 0x7056a5).setStrokeStyle(3, 0xd8c7ff);
-        this.add.text(mx(76), my(465), "LIBRARY", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
-        this.libraryDoor = this.add.circle(mx(115), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.canteen = this.add.rectangle(mx(400), my(475), ms(140), ms(90), 0xb95e36).setStrokeStyle(3, 0xffd3a8);
-        this.add.text(mx(360), my(465), "CANTEEN", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
-        this.canteenDoor = this.add.circle(mx(400), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.campusShop = this.add.rectangle(mx(685), my(490), ms(140), ms(78), 0x376a87).setStrokeStyle(3, 0xb6e5ff);
-        this.add.text(mx(647), my(471), "CAMPUS SHOP", { fontSize: "14px", color: "#ffffff", fontStyle: "bold" });
-        this.shopDoor = this.add.circle(mx(685), my(539), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.treeGarden = this.add.rectangle(mx(400), my(105), ms(170), ms(70), 0x2c6e49).setStrokeStyle(2, 0x8be0a6);
-        this.add.text(mx(345), my(97), "TREE GARDEN", { fontSize: "15px", color: "#ffffff", fontStyle: "bold" });
-        [315, 350, 455, 490].forEach(x => this.add.circle(mx(x), my(95), 15, 0x174f2b).setStrokeStyle(2, 0x80c783));
-        [[65, 105], [70, 350], [270, 545], [545, 545], [745, 245], [745, 575]].forEach(([x, y]) => {
-            this.add.circle(mx(x), my(y), 18, 0x245b36).setStrokeStyle(2, 0x9acb72);
-            this.add.rectangle(mx(x), my(y + 20), 8, 18, 0x72512e);
+        // Tree garden and campus greenery.
+        this.treeGarden = this.add.rectangle(mx(400), my(105), ms(170), ms(70), 0x397b4b)
+            .setStrokeStyle(3, 0x9acb76).setDepth(-3);
+        this.add.text(mx(400), my(105), 'TREE GARDEN', {
+            fontSize: '15px', color: '#f5f5d7', fontStyle: 'bold',
+            backgroundColor: '#245a3c', padding: { x: 8, y: 4 }
+        }).setOrigin(0.5).setDepth(8);
+        [315,350,455,490].forEach(x => addCampusTree(this, mx(x), my(95), 0.82));
+        [[65,105],[70,350],[270,545],[545,545],[745,245],[745,575],[930,115],[1080,355],[1040,760],[180,790],[890,820]].forEach(([x,y],i) => addCampusTree(this, mx(x), my(y), i%3===0 ? 1.05 : 0.82));
+        // Benches with legs, slats and a small shadow.
+        [[285,410],[535,410],[900,650]].forEach(([x,y]) => {
+            this.add.ellipse(mx(x), my(y+10), 82, 16, 0x1e3d2a, 0.22).setDepth(-2);
+            this.add.rectangle(mx(x), my(y), 76, 12, 0x9d704a).setStrokeStyle(2, 0x5b402d).setDepth(1);
+            this.add.rectangle(mx(x), my(y-9), 76, 8, 0xb88b5d).setStrokeStyle(2, 0x5b402d).setDepth(1);
+            this.add.rectangle(mx(x-25), my(y+12), 6, 15, 0x60452f).setDepth(1);
+            this.add.rectangle(mx(x+25), my(y+12), 6, 15, 0x60452f).setDepth(1);
         });
-        [[285, 410], [535, 410]].forEach(([x, y]) => {
-            this.add.rectangle(mx(x), my(y), 72, 13, 0x8d6748).setStrokeStyle(2, 0x533f32);
-            this.add.rectangle(mx(x), my(y + 12), 60, 6, 0x614832);
+        // Decorative lantern posts along the main walk.
+        [[610,395],[610,565],[870,395],[870,565],[350,395],[1010,395]].forEach(([x,y]) => {
+            this.add.rectangle(mx(x), my(y+10), 5, 28, 0x4c5146).setDepth(1);
+            this.add.rectangle(mx(x), my(y-5), 17, 13, 0xf6d98a).setStrokeStyle(2, 0x6a5b3a).setDepth(2);
+            this.add.circle(mx(x), my(y-5), 13, 0xf7df9b, 0.12).setDepth(0);
         });
 
         // PLAYER
@@ -2645,7 +2787,7 @@ if (this.energyBarFill) {
         this.debugQuestExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
         // INTERACTION BACKGROUND
-        this.interactionBox = this.add.rectangle(400, 520, 320, 50, 0x122331)
+        this.interactionBox = this.add.rectangle(400, 520, 390, 54, 0x102633)
             .setStrokeStyle(2, 0x79d7bf);
         this.interactionBox.setAlpha(0.94);
         this.interactionBox.setDepth(10);
@@ -2655,9 +2797,10 @@ if (this.energyBarFill) {
         this.interactionText = this.add.text(
             400, 520, "",
             {
-                fontSize: "17px",
+                fontSize: "15px",
                 color: "#fff4d6",
-                fontStyle: "bold"
+                fontStyle: "bold",
+                letterSpacing: 0.5
             }
         );
 
@@ -2673,18 +2816,26 @@ if (this.energyBarFill) {
         
         this.hudPanels = this.add.graphics().setDepth(4);
         this.hudPanels.setScrollFactor(0);
-        this.hudPanels.fillStyle(0x112333, 0.94);
+        this.hudPanels.fillStyle(0x07131c, 0.45);
+        this.hudPanels.fillRoundedRect(11, 12, 280, 238, 14);
+        this.hudPanels.fillStyle(0x102633, 0.97);
         this.hudPanels.fillRoundedRect(8, 8, 280, 238, 14);
-        this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
+        this.hudPanels.lineStyle(2, 0x5cc7b2, 0.98);
         this.hudPanels.strokeRoundedRect(8, 8, 280, 238, 14);
+        this.hudPanels.fillStyle(0x5cc7b2, 1);
+        this.hudPanels.fillRoundedRect(19, 16, 3, 8, 1);
         this.hudPanels.lineStyle(1, 0x426174, 0.8);
         this.hudPanels.lineBetween(20, 29, 276, 29);
         this.hudPanels.lineBetween(20, 105, 276, 105);
-        this.hudPanels.lineBetween(20, 163, 276, 163);
-        this.hudPanels.fillStyle(0x112333, 0.94);
+        this.hudPanels.lineBetween(20, 176, 276, 176);
+        this.hudPanels.fillStyle(0x07131c, 0.45);
+        this.hudPanels.fillRoundedRect(503, 12, 292, 110, 14);
+        this.hudPanels.fillStyle(0x102633, 0.97);
         this.hudPanels.fillRoundedRect(500, 8, 292, 110, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
         this.hudPanels.strokeRoundedRect(500, 8, 292, 110, 14);
+        this.hudPanels.lineStyle(1, 0x426174, 0.8);
+        this.hudPanels.lineBetween(515, 59, 777, 59);
 
         // QUEST STATUS HUD
 
@@ -2723,8 +2874,8 @@ this.add.text(22, 17, "ACTIVE QUEST", {
         this.xpText.setScrollFactor(0);
 
         this.notebookQuestStatusText = this.add.text(
-            22, 88,
-            "Quest: Notebook — LOCKED",
+            22, 91,
+            "NOTEBOOK  ·  LOCKED",
             {
                 fontSize: "13px",
                 color: "#e7eff6"
@@ -2733,13 +2884,20 @@ this.add.text(22, 17, "ACTIVE QUEST", {
         this.notebookQuestStatusText.setDepth(5);
         this.notebookQuestStatusText.setScrollFactor(0);
 
-        this.inventoryHintText = this.add.text(22, 120, "ACCESS TAB  ·  I", {
-            fontSize: "12px", color: "#c6d5e1"
+        this.inventoryHintText = this.add.text(22, 119, "PERSONAL ACCESS  ·  I", {
+            fontSize: "10px", color: "#b8d8e2", fontStyle: "bold", letterSpacing: 1
         });
-        this.accessTabButton = this.add.rectangle(83, 132, 144, 28, 0x245b49)
+        this.accessTabButton = this.add.rectangle(91, 148, 162, 32, 0x245b49)
             .setStrokeStyle(1, 0x7cffb2).setDepth(4.5).setScrollFactor(0)
             .setInteractive({ useHandCursor: true });
+        this.accessTabButton.on("pointerover", () => this.accessTabButton.setFillStyle(0x34775e));
+        this.accessTabButton.on("pointerout", () => this.accessTabButton.setFillStyle(0x245b49));
         this.accessTabButton.on("pointerdown", () => this.showInventory());
+        this.accessTabButtonText = this.add.text(91, 148, "OPEN ACCESS TAB  ›", {
+            fontSize: "10px", color: "#f4fbf8", fontStyle: "bold", letterSpacing: 1
+        }).setOrigin(0.5).setDepth(5).setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+        this.accessTabButtonText.on("pointerdown", () => this.showInventory());
         this.inventoryHintText.setDepth(5);
         this.inventoryHintText.setScrollFactor(0);
         this.inventoryHintText.setInteractive({ useHandCursor: true })
@@ -2747,14 +2905,14 @@ this.add.text(22, 17, "ACTIVE QUEST", {
         this.inventoryHintText.on("pointerover", () => this.inventoryHintText.setColor("#7cffb2"));
         this.inventoryHintText.on("pointerout", () => this.inventoryHintText.setColor("#c6d5e1"));
 
-        this.treeHintText = this.add.text(22, 181, "T  ·  TREE TRAINING", {
-            fontSize: "12px", color: "#9cebd3"
+        this.treeHintText = this.add.text(22, 190, "T  ·  TREE TRAINING", {
+            fontSize: "11px", color: "#9cebd3", fontStyle: "bold"
         });
         this.treeHintText.setDepth(5);
         this.treeHintText.setScrollFactor(0);
 
-        this.integrationHintText = this.add.text(22, 215, "H HISTORY   Q TASKS   B QUESTS", {
-            fontSize: "11px", color: "#c6d5e1"
+        this.integrationHintText = this.add.text(22, 222, "H HISTORY   Q TASKS   B QUESTS", {
+            fontSize: "10px", color: "#c6d5e1", fontStyle: "bold"
         });
         this.integrationHintText.setDepth(5);
         this.integrationHintText.setScrollFactor(0);
@@ -2849,13 +3007,13 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
     }
 
     createMiniMap() {
-        this.minimapPanel = this.add.rectangle(700, 160, 160, 92, 0x112333, 0.97)
+        this.minimapPanel = this.add.rectangle(700, 174, 176, 104, 0x102633, 0.98)
             .setStrokeStyle(2, 0x5cc7b2).setDepth(6).setScrollFactor(0);
-        this.minimapLabel = this.add.text(628, 119, "CAMPUS MAP", {
-            fontSize: "10px", color: "#9cebd3", fontStyle: "bold"
+        this.minimapLabel = this.add.text(622, 132, "CAMPUS MAP  ·  LIVE", {
+            fontSize: "9px", color: "#9cebd3", fontStyle: "bold", letterSpacing: 1
         }).setDepth(7).setScrollFactor(0);
         this.minimapGraphic = this.add.graphics().setDepth(7).setScrollFactor(0);
-        this.minimapLayout = { x: 628, y: 133, width: 144, height: 54 };
+        this.minimapLayout = { x: 622, y: 147, width: 156, height: 54 };
         this.updateMiniMap();
     }
 
