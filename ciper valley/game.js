@@ -1551,87 +1551,171 @@ if (this.energyBarFill) {
         if (this.inventoryOpen) return;
         this.inventoryOpen = true;
         this.player.body.setVelocity(0);
-
-        this.interactionBox.setVisible(false);
-        this.interactionText.setVisible(false);
+        this.interactionBox?.setVisible(false);
+        this.interactionText?.setVisible(false);
 
         this.inventoryObjects = [];
-        const add = (obj) => {
+        this.inventoryPageObjects = [];
+        const addBase = obj => {
             obj.setDepth(40).setScrollFactor(0);
             this.inventoryObjects.push(obj);
             return obj;
         };
-
-        add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
-        add(this.add.rectangle(400, 300, 760, 560, 0x142733, 1).setStrokeStyle(3, 0x5cc7b2));
-        add(this.add.text(400, 48, "PERSONAL ACCESS TAB", {
-            fontSize: "28px", color: "#ffffff", fontStyle: "bold"
+        addBase(this.add.rectangle(400, 300, 800, 600, 0x07131c, 0.94));
+        addBase(this.add.rectangle(400, 300, 748, 548, 0x142733, 1).setStrokeStyle(3, 0x5cc7b2));
+        addBase(this.add.rectangle(400, 300, 730, 530, 0x172f3b, 1).setStrokeStyle(1, 0x355766));
+        addBase(this.add.text(400, 48, "CIPHER VALLEY  /  PERSONAL ACCESS TAB", {
+            fontSize: "23px", color: "#f1f7f5", fontStyle: "bold", letterSpacing: 1
         }).setOrigin(0.5));
-        add(this.add.text(400, 82, "PROFILE  ·  QUEST LOG  ·  INVENTORY  ·  DEBUG QUEUE", {
-            fontSize: "13px", color: "#9cebd3"
-        }).setOrigin(0.5));
-        add(this.add.text(65, 120,
-            `LEVEL ${this.playerLevel}  ·  XP ${this.playerTotalXP}  ·  ENERGY ${this.playerEnergy}/100  ·  COINS ${gameState.coins}`,
-            { fontSize: "14px", color: "#ffe08a", fontStyle: "bold" }));
-        add(this.add.rectangle(225, 267, 330, 236, 0x1d3542).setStrokeStyle(1, 0x466976));
-        add(this.add.rectangle(575, 267, 330, 236, 0x1d3542).setStrokeStyle(1, 0x466976));
-        add(this.add.text(70, 150, "INVENTORY  ·  C HASH TABLE", {
-            fontSize: "15px", color: "#9cebd3", fontStyle: "bold"
-        }));
-        add(this.add.text(425, 150, "QUEST LOG  ·  C++ PLAYER", {
-            fontSize: "15px", color: "#9cebd3", fontStyle: "bold"
-        }));
-        const completedDebugCount = Object.values(this.debugQuestCompleted).filter(Boolean).length;
-        const completedDebugNames = this.getDebugQuestCatalog()
-            .filter(quest => this.debugQuestCompleted[quest.id])
-            .map(quest => quest.title).join(", ") || "None yet";
-        const questSummary = [
-            `Coffee Crisis  ·  ${this.coffeeQuestCompleted ? "COMPLETE" : this.coffeeQuestAccepted ? "ACTIVE" : "AVAILABLE"}`,
-            `Linked List  ·  ${this.questCompleted ? "COMPLETE" : this.coffeeQuestCompleted ? "AVAILABLE" : "LOCKED"}`,
-            `Notebook  ·  ${this.notebookQuestCompleted ? "COMPLETE" : this.notebookQuestAccepted ? "ACTIVE" : "LOCKED"}`,
-            `Debug missions  ·  ${completedDebugCount}/4 complete`,
-            `Debug cleared  ·  ${completedDebugNames}`,
-            `Current area  ·  ${String(gameState.location).toUpperCase()}`
-        ].join("\n");
-        add(this.add.text(425, 178, questSummary, {
-            fontSize: "14px", color: "#f1f5f9", lineSpacing: 8,
-            wordWrap: { width: 300 }
-        }));
-
-        this.inventoryListText = add(this.add.text(70, 178, "Loading C inventory...", {
-            fontSize: "14px", color: "#ffffff", lineSpacing: 5,
-            wordWrap: { width: 300 }
-        }));
-        this.inventoryMessageText = add(this.add.text(400, 420, "", {
-            fontSize: "17px", color: "#ffe08a", align: "center",
-            wordWrap: { width: 650 }
+        addBase(this.add.text(400, 78, "YOUR CAMPUS COMPANION  ·  PROFILE, MISSIONS & SYSTEMS", {
+            fontSize: "11px", color: "#8fb9b8", letterSpacing: 1
         }).setOrigin(0.5));
 
-        const button = (x, y, label, callback) => {
-            const b = add(this.add.text(x, y, label, {
-                fontSize: "17px", color: "#ffffff", backgroundColor: "#285943",
-                padding: { x: 12, y: 10 }
-            }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
-            b.on("pointerover", () => b.setStyle({ backgroundColor: "#397957" }));
-            b.on("pointerout", () => b.setStyle({ backgroundColor: "#285943" }));
-            b.on("pointerdown", callback);
-        };
-
-        button(105, 500, "Add Coffee +1", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."));
-        button(300, 500, "Add Notebook +1", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."));
-        button(495, 500, "Search Coffee", () => this.searchInventoryItem("Coffee"));
-        button(690, 500, "Use Coffee", () => this.useInventoryItem("Coffee", 20));
-        button(200, 450, "Use Energy Drink", () => this.useInventoryItem("Energy Drink", 40));
-        button(600, 450, "Use Snack", () => this.useInventoryItem("Snack", 10));
-        button(315, 555, "CLOSE  [I / ESC]", () => this.closeInventory());
-        button(625, 555, "QUEUE  ›", () => {
-            this.closeInventory();
-            this.showDebugQuestBoard();
+        const tabDefs = [
+            [125, "PROFILE", "profile"], [308, "INVENTORY", "inventory"],
+            [492, "QUEST LOG", "quests"], [675, "SYSTEMS", "systems"]
+        ];
+        this.accessTabButtons = {};
+        tabDefs.forEach(([x, label, page]) => {
+            const bg = addBase(this.add.rectangle(x, 125, 166, 34, 0x203b47)
+                .setStrokeStyle(1, 0x52717c).setInteractive({ useHandCursor: true }));
+            const txt = addBase(this.add.text(x, 125, label, {
+                fontSize: "12px", color: "#c8d8df", fontStyle: "bold", letterSpacing: 1
+            }).setOrigin(0.5));
+            bg.on("pointerover", () => { if (this.accessTabPage !== page) bg.setFillStyle(0x2a4d58); });
+            bg.on("pointerout", () => { if (this.accessTabPage !== page) bg.setFillStyle(0x203b47); });
+            bg.on("pointerdown", () => this.renderAccessTabPage(page));
+            txt.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.renderAccessTabPage(page));
+            this.accessTabButtons[page] = { bg, txt };
         });
+        addBase(this.add.rectangle(400, 335, 690, 382, 0x1c3541, 1).setStrokeStyle(1, 0x42616d));
+        addBase(this.add.text(400, 570, "I / ESC  ·  CLOSE ACCESS TAB", {
+            fontSize: "11px", color: "#8faeb8", fontStyle: "bold", letterSpacing: 1
+        }).setOrigin(0.5));
+        const close = addBase(this.add.text(720, 68, "✕", {
+            fontSize: "21px", color: "#f0c77b", backgroundColor: "#263d48",
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        close.on("pointerdown", () => this.closeInventory());
 
         this.inventoryExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        this.accessTabPage = "profile";
+        this.renderAccessTabPage("profile");
         this.animatePanel(this.inventoryObjects);
-        await this.refreshInventoryList();
+    }
+
+    renderAccessTabPage(page) {
+        if (!this.inventoryOpen) return;
+        this.inventoryPageObjects?.forEach(obj => obj?.destroy?.());
+        this.inventoryPageObjects = [];
+        this.inventoryListText = null;
+        this.inventoryMessageText = null;
+        this.accessTabPage = page;
+        const add = obj => {
+            obj.setDepth(42).setScrollFactor(0);
+            this.inventoryPageObjects.push(obj);
+            return obj;
+        };
+        const label = (x, y, text, size=14, color="#e8f1f2", style="normal") =>
+            add(this.add.text(x, y, text, { fontSize: `${size}px`, color, fontStyle: style, lineSpacing: 7, wordWrap: { width: 610 } }));
+        const card = (x, y, w, h, title) => {
+            add(this.add.rectangle(x, y, w, h, 0x203b47).setStrokeStyle(1, 0x4c707b));
+            add(this.add.text(x - w/2 + 18, y - h/2 + 13, title, {
+                fontSize: "12px", color: "#8fe0c6", fontStyle: "bold", letterSpacing: 1
+            }));
+        };
+        const button = (x, y, text, callback, width=145) => {
+            const bg = add(this.add.rectangle(x, y, width, 32, 0x285943)
+                .setStrokeStyle(1, 0x67c9a8).setInteractive({ useHandCursor: true }));
+            const txt = add(this.add.text(x, y, text, {
+                fontSize: "11px", color: "#f4fbf8", fontStyle: "bold"
+            }).setOrigin(0.5));
+            bg.on("pointerover", () => bg.setFillStyle(0x397957));
+            bg.on("pointerout", () => bg.setFillStyle(0x285943));
+            bg.on("pointerdown", callback);
+            txt.setInteractive({ useHandCursor: true }).on("pointerdown", callback);
+        };
+
+        Object.entries(this.accessTabButtons || {}).forEach(([key, controls]) => {
+            const active = key === page;
+            controls.bg.setFillStyle(active ? 0x2b6858 : 0x203b47);
+            controls.bg.setStrokeStyle(active ? 2 : 1, active ? 0x8be0c2 : 0x52717c);
+            controls.txt.setColor(active ? "#ffffff" : "#c8d8df");
+        });
+
+        if (page === "profile") {
+            label(78, 178, "WELCOME BACK, EXPLORER", 17, "#ffffff", "bold");
+            label(78, 212, `LEVEL  ${this.playerLevel}      TOTAL XP  ${this.playerTotalXP}`, 15, "#ffe08a", "bold");
+            label(78, 250, `ENERGY  ${this.playerEnergy}/100`, 13, "#b8d8e2", "bold");
+            add(this.add.rectangle(400, 292, 610, 16, 0x10232d).setStrokeStyle(1, 0x42616d));
+            add(this.add.rectangle(95 + 305 * (this.playerEnergy / 100), 292, Math.max(2, 610 * (this.playerEnergy / 100)), 10, 0x57cc99).setOrigin(0, 0.5));
+            label(78, 324, `COINS  ${Number(gameState.coins) || 0}       DAY  ${this.gameDay}  ·  ${formatGameClock()}`, 14, "#e8f1f2");
+            label(78, 370, `CURRENT LOCATION  ·  ${String(gameState.location || "campus").toUpperCase()}`, 13, "#9cebd3", "bold");
+            label(78, 415, "Your progress is saved automatically as you explore Cipher Valley.", 12, "#a9bec8");
+            button(400, 490, "VIEW QUEST LOG  ›", () => this.renderAccessTabPage("quests"), 190);
+        } else if (page === "inventory") {
+            card(400, 315, 630, 260, "ITEM STORAGE  ·  C HASH TABLE");
+            this.inventoryListText = add(this.add.text(105, 205, "Loading items from the C hash table...", {
+                fontSize: "13px", color: "#f1f5f9", lineSpacing: 8, wordWrap: { width: 580 }
+            }));
+            this.inventoryMessageText = add(this.add.text(400, 425, this.inventoryMessage || "Items are stored and searched through the C inventory module.", {
+                fontSize: "11px", color: "#ffe08a", align: "center", wordWrap: { width: 590 }
+            }).setOrigin(0.5));
+            button(155, 485, "+ COFFEE", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."), 125);
+            button(300, 485, "+ NOTEBOOK", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."), 135);
+            button(445, 485, "SEARCH COFFEE", () => this.searchInventoryItem("Coffee"), 135);
+            button(590, 485, "USE COFFEE", () => this.useInventoryItem("Coffee", 20), 125);
+            button(270, 530, "USE ENERGY DRINK", () => this.useInventoryItem("Energy Drink", 40), 165);
+            button(465, 530, "USE SNACK", () => this.useInventoryItem("Snack", 10), 135);
+            this.refreshInventoryList();
+        } else if (page === "quests") {
+            label(78, 178, "CAMPUS STORY", 12, "#8fe0c6", "bold");
+            const questRows = [
+                ["COFFEE CRISIS", this.coffeeQuestCompleted ? "COMPLETE" : this.coffeeQuestAccepted ? "ACTIVE" : "AVAILABLE"],
+                ["LINKED LIST TRAINING", this.questCompleted ? "COMPLETE" : this.coffeeQuestCompleted ? "AVAILABLE" : "LOCKED"],
+                ["NOTEBOOK QUEST", this.notebookQuestCompleted ? "COMPLETE" : this.notebookQuestAccepted ? "ACTIVE" : "LOCKED"],
+                ["TREE TRAINING", this.treeChallengeCompleted ? "COMPLETE" : "AVAILABLE"]
+            ];
+            questRows.forEach(([name, status], i) => {
+                const y = 220 + i * 52;
+                add(this.add.rectangle(400, y + 9, 620, 42, 0x263f4b).setStrokeStyle(1, 0x405f6a));
+                label(100, y, name, 12, "#f1f5f9", "bold");
+                add(this.add.text(690, y, status, {
+                    fontSize: "11px", color: status === "COMPLETE" ? "#7cffb2" : status === "LOCKED" ? "#9aaeb7" : "#ffe08a", fontStyle: "bold"
+                }).setOrigin(1, 0));
+            });
+            const completed = Object.values(this.debugQuestCompleted || {}).filter(Boolean).length;
+            label(78, 440, `DEBUG MISSIONS  ·  ${completed}/4 COMPLETE`, 13, "#ffe08a", "bold");
+            button(400, 500, "OPEN DEBUG QUEUE  ›", () => {
+                this.closeInventory();
+                this.showDebugQuestBoard();
+            }, 210);
+        } else if (page === "systems") {
+            card(225, 315, 300, 260, "CIRCULAR QUEUE  ·  TASKS");
+            card(575, 315, 300, 260, "C STACK  ·  HISTORY");
+            const readModuleLines = (module, countName, itemName) => {
+                const out = [];
+                if (!module) return out;
+                try {
+                    const count = module.ccall(countName, "number", [], []);
+                    for (let i = 0; i < count; i++) out.push(`${i + 1}. ${module.ccall(itemName, "string", ["number"], [i])}`);
+                } catch (error) { console.warn("Access Tab could not read a C data-structure module:", error); }
+                return out;
+            };
+            const queueLines = readModuleLines(queueModule, "queueGetCount", "queueGetTaskAt");
+            const historyLines = readModuleLines(stackModule, "stackGetCount", "stackGetActionAt");
+            label(85, 220, (queueLines.length ? queueLines : this.taskQueueFallback || ["No pending tasks."]).join("\n"), 11, "#e8f1f2");
+            label(435, 220, (historyLines.length ? historyLines : this.actionHistoryFallback || ["No actions recorded."]).slice(-7).join("\n"), 11, "#e8f1f2");
+            button(225, 495, "OPEN TASK QUEUE  [Q]", () => {
+                this.closeInventory();
+                this.showIntegrationPanel("queue");
+            }, 190);
+            button(575, 495, "OPEN HISTORY  [H]", () => {
+                this.closeInventory();
+                this.showIntegrationPanel("history");
+            }, 190);
+            label(105, 535, "The queue and history are backed by your C data-structure modules.", 10, "#9fb6bf");
+        }
     }
 
     async addInventoryItem(name, description) {
@@ -1704,10 +1788,15 @@ if (this.energyBarFill) {
 
     closeInventory() {
         this.inventoryOpen = false;
+        if (this.inventoryPageObjects) {
+            this.inventoryPageObjects.forEach(obj => obj?.destroy?.());
+            this.inventoryPageObjects = [];
+        }
         if (this.inventoryObjects) {
-            this.inventoryObjects.forEach(obj => obj.destroy());
+            this.inventoryObjects.forEach(obj => obj?.destroy?.());
             this.inventoryObjects = [];
         }
+        this.accessTabButtons = null;
         this.inventoryListText = null;
         this.inventoryMessageText = null;
         if (this.inventoryExitKey) {
@@ -2588,10 +2677,10 @@ if (this.energyBarFill) {
         this.hudPanels.fillRoundedRect(8, 8, 280, 238, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
         this.hudPanels.strokeRoundedRect(8, 8, 280, 238, 14);
-        // Subtle separators give the HUD a cleaner RPG menu structure.
-        this.hudPanels.lineStyle(1, 0x426174, 0.85);
-        this.hudPanels.lineBetween(20, 31, 276, 31);
-        this.hudPanels.lineBetween(20, 108, 276, 108);
+        this.hudPanels.lineStyle(1, 0x426174, 0.8);
+        this.hudPanels.lineBetween(20, 29, 276, 29);
+        this.hudPanels.lineBetween(20, 105, 276, 105);
+        this.hudPanels.lineBetween(20, 163, 276, 163);
         this.hudPanels.fillStyle(0x112333, 0.94);
         this.hudPanels.fillRoundedRect(500, 8, 292, 110, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
@@ -2658,13 +2747,13 @@ this.add.text(22, 17, "ACTIVE QUEST", {
         this.inventoryHintText.on("pointerover", () => this.inventoryHintText.setColor("#7cffb2"));
         this.inventoryHintText.on("pointerout", () => this.inventoryHintText.setColor("#c6d5e1"));
 
-        this.treeHintText = this.add.text(22, 178, "T  ·  TREE TRAINING", {
+        this.treeHintText = this.add.text(22, 181, "T  ·  TREE TRAINING", {
             fontSize: "12px", color: "#9cebd3"
         });
         this.treeHintText.setDepth(5);
         this.treeHintText.setScrollFactor(0);
 
-        this.integrationHintText = this.add.text(22, 211, "H History   Q Tasks   B Quests", {
+        this.integrationHintText = this.add.text(22, 215, "H HISTORY   Q TASKS   B QUESTS", {
             fontSize: "11px", color: "#c6d5e1"
         });
         this.integrationHintText.setDepth(5);
@@ -2760,13 +2849,13 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
     }
 
     createMiniMap() {
-        this.minimapPanel = this.add.rectangle(700, 199, 184, 136, 0x112333, 0.97)
+        this.minimapPanel = this.add.rectangle(700, 160, 160, 92, 0x112333, 0.97)
             .setStrokeStyle(2, 0x5cc7b2).setDepth(6).setScrollFactor(0);
-        this.minimapLabel = this.add.text(618, 134, "CAMPUS MAP", {
-            fontSize: "11px", color: "#9cebd3", fontStyle: "bold"
+        this.minimapLabel = this.add.text(628, 119, "CAMPUS MAP", {
+            fontSize: "10px", color: "#9cebd3", fontStyle: "bold"
         }).setDepth(7).setScrollFactor(0);
         this.minimapGraphic = this.add.graphics().setDepth(7).setScrollFactor(0);
-        this.minimapLayout = { x: 618, y: 151, width: 164, height: 96 };
+        this.minimapLayout = { x: 628, y: 133, width: 144, height: 54 };
         this.updateMiniMap();
     }
 
