@@ -140,7 +140,9 @@ function formatGameClock() {
     const minute = minutes % 60;
     const period = hour >= 12 ? "PM" : "AM";
     const hour12 = hour % 12 || 12;
-    return `DAY ${gameState.gameDay} | ${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
+    const phase = hour >= 20 || hour < 5 ? "NIGHT"
+        : (hour >= 17 ? "EVENING" : (hour < 7 ? "SUNRISE" : "DAY"));
+    return `DAY ${gameState.gameDay} | ${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period} · ${phase}`;
 }
 
 function startGameClock() {
@@ -150,7 +152,7 @@ function startGameClock() {
         if (gameState.gameMinutes === 0) gameState.gameDay = Math.max(1, Number(gameState.gameDay) || 1) + 1;
         gameClockListeners.forEach(listener => listener(formatGameClock()));
         persistGameState();
-    }, 2000);
+    }, 1000);
 }
 
 if (globalThis.window) {
@@ -1608,7 +1610,7 @@ if (this.energyBarFill) {
         this.integrationPanelOpen = true;
         this.player.body.setVelocity(0);
         this.integrationPanelObjects = [];
-        const add = (obj) => { obj.setDepth(60).setScrollFactor(0); this.integrationPanelObjects.push(obj); return obj; };
+        const add = (obj) => { obj.setDepth(10020).setScrollFactor(0); this.integrationPanelObjects.push(obj); return obj; };
         add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
         const isHistory = kind === "history";
         add(this.add.text(400, 55, isHistory ? "ACTION HISTORY — C STACK" : "PENDING TASKS — C CIRCULAR QUEUE", {
@@ -1665,7 +1667,7 @@ if (this.energyBarFill) {
         this.inventoryObjects = [];
         this.inventoryPageObjects = [];
         const addBase = obj => {
-            obj.setDepth(40).setScrollFactor(0);
+            obj.setDepth(10030).setScrollFactor(0);
             this.inventoryObjects.push(obj);
             return obj;
         };
@@ -1728,7 +1730,7 @@ if (this.energyBarFill) {
         this.inventoryMessageText = null;
         this.accessTabPage = page;
         const add = obj => {
-            obj.setDepth(42).setScrollFactor(0);
+            obj.setDepth(10031).setScrollFactor(0);
             this.inventoryPageObjects.push(obj);
             return obj;
         };
@@ -1947,12 +1949,12 @@ if (this.energyBarFill) {
         this.questDialogueObjects = [];
 
         const add = (obj) => {
-            obj.setDepth(60).setScrollFactor(0);
+            obj.setDepth(10020).setScrollFactor(0);
             this.questDialogueObjects.push(obj);
             return obj;
         };
 
-        add(this.add.rectangle(400, 300, 800, 600, 0x06111a, 0.82));
+        add(this.add.rectangle(400, 300, 800, 600, 0x06111a, 1));
         add(this.add.rectangle(400, 304, 620, 340, 0x07131c, 0.55));
         add(this.add.rectangle(400, 300, 610, 330, 0x183541, 1)
             .setStrokeStyle(3, 0x70d6c2));
@@ -2042,7 +2044,7 @@ if (this.energyBarFill) {
         this.mentorIntroPage = 0;
         this.mentorIntroObjects = [];
         const add = object => {
-            object.setDepth(70).setScrollFactor(0);
+            object.setDepth(10040).setScrollFactor(0);
             this.mentorIntroObjects.push(object);
             return object;
         };
@@ -2593,14 +2595,29 @@ if (this.energyBarFill) {
             }
         }
         // Main campus paths with darker edging, warm paving and tile seams.
-        this.add.rectangle(600, 480, 1200, 142, 0x8b7653).setDepth(-8);
-        this.add.rectangle(600, 480, 1200, 126, 0xd8bd83).setDepth(-7);
-        this.add.rectangle(750, 480, 142, 900, 0x8b7653).setDepth(-8);
-        this.add.rectangle(750, 480, 126, 900, 0xd8bd83).setDepth(-7);
+        this.add.rectangle(600, 480, 1200, 112, 0x8b7653).setDepth(-8);
+        this.add.rectangle(600, 480, 1200, 98, 0xd8bd83).setDepth(-7);
+        this.add.rectangle(750, 480, 112, 900, 0x8b7653).setDepth(-8);
+        this.add.rectangle(750, 480, 98, 900, 0xd8bd83).setDepth(-7);
         const pathLines = this.add.graphics().setDepth(-6);
         pathLines.lineStyle(2, 0xb79b68, 0.55);
         for (let x = 35; x < 1200; x += 62) pathLines.lineBetween(x, 420, x, 540);
         for (let y = 25; y < 900; y += 62) pathLines.lineBetween(690, y, 810, y);
+
+        // Ambient world lighting sits above the ground and paving, but below
+        // buildings, characters and the fixed HUD.
+        this.campusLighting = this.add.rectangle(600, 450, 1200, 900, 0x17243b, 0)
+            .setDepth(-6.5);
+        // Short branch paths connect the buildings to the main walk without
+        // cutting through the garden beds or building entrances.
+        const branchPaths = this.add.graphics().setDepth(-7.5);
+        [[270,330,270,480],[990,330,990,480],[172.5,480,172.5,712.5],
+         [600,480,600,712.5],[1027.5,480,1027.5,735],[600,197,600,480]].forEach(([x1,y1,x2,y2]) => {
+            branchPaths.lineStyle(42, 0x8b7653, 1);
+            branchPaths.lineBetween(x1, y1, x2, y2);
+            branchPaths.lineStyle(34, 0xd8bd83, 1);
+            branchPaths.lineBetween(x1, y1, x2, y2);
+        });
         // Small grass beds and flower clusters break up the open green areas.
         [[55,250],[330,270],[520,270],[930,260],[1010,610],[360,700],[560,760],[100,700]].forEach(([x,y], i) => {
             this.add.ellipse(x, y + 8, 78, 30, 0x347a46, 0.55).setDepth(-5);
@@ -2649,6 +2666,36 @@ if (this.energyBarFill) {
         this.add.rectangle(mx(685), my(490) + 24, 21, 31, 0x28495c).setStrokeStyle(2, 0xd5eff0).setDepth(9);
         this.shopDoor = this.add.circle(mx(685), my(539), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
 
+        // Building-specific visual signatures make each destination easy to recognise.
+        // Lab: illuminated status strip and a small rooftop antenna.
+        this.add.rectangle(mx(180), my(105), 72, 7, 0x57cc99).setStrokeStyle(1, 0xd8fff0).setDepth(4);
+        this.add.rectangle(mx(235), my(96), 4, 22, 0x526b76).setDepth(4);
+        this.add.circle(mx(235), my(84), 5, 0x7ce7d0).setDepth(5);
+        // Hostel: warm balcony rail and a small residential sign.
+        this.add.rectangle(mx(660), my(188), 112, 5, 0xe8bb83).setDepth(8);
+        [620,640,660,680,700].forEach(x => this.add.rectangle(mx(x), my(181), 3, 14, 0x70432f).setDepth(8));
+        // Library: book emblem below its signboard.
+        this.add.rectangle(mx(115), my(475), 24, 17, 0xf1dfad).setStrokeStyle(2, 0x514478).setDepth(7);
+        this.add.line(0, 0, mx(115), my(467), mx(115), my(483), 0x514478, 2).setDepth(8);
+        // Canteen: striped awning and outdoor dining tables.
+        for (let i = 0; i < 7; i++) {
+            this.add.rectangle(mx(400 - 54 + i * 18), my(434), 15, 10,
+                i % 2 ? 0xffe0a8 : 0xb85d45).setDepth(8);
+        }
+        [[500,560],[700,560]].forEach(([x,y], index) => {
+            this.add.ellipse(mx(x), my(y + 10), 62, 13, 0x1e3d2a, 0.25).setDepth(0);
+            this.add.rectangle(mx(x), my(y), 52, 8, 0x9b704c).setStrokeStyle(2, 0x5b402d).setDepth(2);
+            this.add.rectangle(mx(x - 22), my(y - 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
+            this.add.rectangle(mx(x + 22), my(y - 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
+            this.add.rectangle(mx(x - 22), my(y + 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
+            this.add.rectangle(mx(x + 22), my(y + 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
+        });
+        // Campus shop: a compact striped canopy above the display windows.
+        for (let i = 0; i < 6; i++) {
+            this.add.rectangle(mx(685 - 45 + i * 18), my(447), 15, 9,
+                i % 2 ? 0x9ed9e7 : 0x31566e).setDepth(8);
+        }
+
         // Tree garden and campus greenery.
         this.treeGarden = this.add.rectangle(mx(400), my(105), ms(170), ms(70), 0x397b4b)
             .setStrokeStyle(3, 0x9acb76).setDepth(-3);
@@ -2657,19 +2704,40 @@ if (this.energyBarFill) {
             backgroundColor: '#245a3c', padding: { x: 8, y: 4 }
         }).setOrigin(0.5).setDepth(8);
         [315,350,455,490].forEach(x => addCampusTree(this, mx(x), my(95), 0.82));
-        [[65,105],[70,350],[270,545],[545,545],[745,245],[745,575],[930,115],[1080,355],[1040,760],[180,790],[890,820]].forEach(([x,y],i) => addCampusTree(this, mx(x), my(y), i%3===0 ? 1.05 : 0.82));
-        // Benches with legs, slats and a small shadow.
-        [[285,410],[535,410],[900,650]].forEach(([x,y]) => {
+
+        // TREE GARDEN — a clearly bounded recreation zone with a planted edge.
+        this.add.rectangle(mx(400), my(142), ms(150), 5, 0x9acb76).setDepth(-2);
+        this.add.rectangle(mx(400), my(68), ms(150), 5, 0x9acb76).setDepth(-2);
+        // Small flower beds make the garden distinct from the paved campus roads.
+        [[350,145],[390,150],[430,145],[470,150]].forEach(([x,y], index) => {
+            this.add.ellipse(mx(x), my(y), 30, 12, 0x285d3b, 0.7).setDepth(-1);
+            [0,1,2].forEach(j => this.add.circle(mx(x - 8 + j * 8), my(y - 2 - (j % 2) * 3), 3,
+                [0xf6d77a,0xf4a7bd,0xf2e8c8][(index + j) % 3]).setDepth(0));
+        });
+        // A small noticeboard acts as a campus landmark beside the main walk.
+        this.add.rectangle(mx(560), my(260), 48, 42, 0x765137).setStrokeStyle(3, 0x4d3425).setDepth(1);
+        this.add.rectangle(mx(560), my(258), 38, 29, 0xf1dfad).setStrokeStyle(2, 0x9b7748).setDepth(2);
+        this.add.text(mx(560), my(258), "NOTICE\\nBOARD", {
+            fontSize: "8px", color: "#60452f", fontStyle: "bold", align: "center"
+        }).setOrigin(0.5).setDepth(3);
+        [[65,105],[70,350],[270,545],[545,545],[745,245],[745,575],[700,115],[760,355],[720,540],[180,550],[590,540]].forEach(([x,y],i) => addCampusTree(this, mx(x), my(y), i%3===0 ? 1.05 : 0.82));
+        // Benches are placed on open grass clear of roads, doors and buildings.
+        [[350,390],[600,390],[650,570]].forEach(([x,y]) => {
             this.add.ellipse(mx(x), my(y+10), 82, 16, 0x1e3d2a, 0.22).setDepth(-2);
             this.add.rectangle(mx(x), my(y), 76, 12, 0x9d704a).setStrokeStyle(2, 0x5b402d).setDepth(1);
             this.add.rectangle(mx(x), my(y-9), 76, 8, 0xb88b5d).setStrokeStyle(2, 0x5b402d).setDepth(1);
             this.add.rectangle(mx(x-25), my(y+12), 6, 15, 0x60452f).setDepth(1);
             this.add.rectangle(mx(x+25), my(y+12), 6, 15, 0x60452f).setDepth(1);
         });
-        // Decorative lantern posts along the main walk.
+        // Decorative lantern posts along the main walk. Their glow becomes
+        // visible during evening and night.
+        this.campusLampGlows = [];
         [[610,395],[610,565],[870,395],[870,565],[350,395],[1010,395]].forEach(([x,y]) => {
             this.add.rectangle(mx(x), my(y+10), 5, 28, 0x4c5146).setDepth(1);
             this.add.rectangle(mx(x), my(y-5), 17, 13, 0xf6d98a).setStrokeStyle(2, 0x6a5b3a).setDepth(2);
+            const glow = this.add.circle(mx(x), my(y-5), 31, 0xffd27a, 0)
+                .setDepth(-5.5);
+            this.campusLampGlows.push(glow);
             this.add.circle(mx(x), my(y-5), 13, 0xf7df9b, 0.12).setDepth(0);
         });
 
@@ -2686,11 +2754,12 @@ if (this.energyBarFill) {
 
         this.player.body.setCollideWorldBounds(true);
         this.player.body.setSize(22, 20).setOffset(5, 24);
+        this.player.setDepth(this.player.y + 30);
         this.cameras.main.setBounds(0, 0, 1200, 900);
         this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
         // MENTOR NPC
-        this.npc = this.add.sprite(mx(600), my(350), "cv-mentor", "d0f0").setDisplaySize(42, 52);
+        this.npc = this.add.sprite(mx(600), my(400), "cv-mentor", "d0f0").setDisplaySize(42, 52).setDepth(my(400) + 30);
         this.mentorIndicator = this.add.text(this.npc.x, this.npc.y - 42,
             this.mentorIntroSeen ? "?" : "!", {
                 fontSize: "18px", color: "#fff4a3", fontStyle: "bold",
@@ -2699,38 +2768,47 @@ if (this.energyBarFill) {
         this.tweens.add({ targets: this.mentorIndicator, y: this.mentorIndicator.y - 5,
             alpha: 0.7, duration: 650, yoyo: true, repeat: -1 });
 
-        this.add.text(
-            mx(570), my(375),
-            "MENTOR",
-            {
-                fontSize: "16px",
-                color: "#ffffff"
-            }
-        );
+        this.mentorName = this.add.text(
+            this.npc.x, this.npc.y + 43, "MENTOR",
+            { fontSize: "16px", color: "#ffffff", fontStyle: "bold",
+              stroke: "#173332", strokeThickness: 3 }
+        ).setOrigin(0.5).setDepth(this.npc.y + 60);
 
         // LAB ASSISTANT — backed by the C++ LabAssistant class.
-        this.labAssistant = this.add.sprite(mx(290), my(245), "cv-assistant", "d0f0").setDisplaySize(38, 48);
-        this.add.text(mx(252), my(266), "LAB ASSISTANT", {
-            fontSize: "11px", color: "#ffffff", fontStyle: "bold"
-        });
+        this.labAssistant = this.add.sprite(mx(290), my(245), "cv-assistant", "d0f0").setDisplaySize(38, 48).setDepth(my(245) + 30);
+        this.labAssistantName = this.add.text(this.labAssistant.x, this.labAssistant.y + 38, "LAB ASSISTANT", {
+            fontSize: "11px", color: "#ffffff", fontStyle: "bold",
+            stroke: "#173332", strokeThickness: 3
+        }).setOrigin(0.5).setDepth(this.labAssistant.y + 55);
 
         // FRIEND NPC — introduces the mandatory opening quest.
-        this.friend = this.add.sprite(mx(360), my(400), "cv-friend", "d0f0").setDisplaySize(40, 50);
-        this.add.text(mx(330), my(425), "FRIEND", {
-            fontSize: "14px", color: "#ffffff"
-        });
+        this.friend = this.add.sprite(mx(360), my(400), "cv-friend", "d0f0").setDisplaySize(40, 50).setDepth(my(400) + 30);
+        this.friendName = this.add.text(this.friend.x, this.friend.y + 39, "FRIEND", {
+            fontSize: "14px", color: "#ffffff", fontStyle: "bold",
+            stroke: "#173332", strokeThickness: 3
+        }).setOrigin(0.5).setDepth(this.friend.y + 55);
 
-        // VENDING MACHINE — major interactive object with a real code-repair challenge.
-        this.vendingMachine = this.add.rectangle(mx(735), my(330), 68, 92, 0x273746)
-            .setStrokeStyle(3, 0x57cc99);
-        this.add.rectangle(mx(735), my(317), 44, 32, 0x5dade2);
-        this.add.rectangle(mx(735), my(350), 44, 24, 0x17202a);
-        this.add.text(mx(700), my(380), "VENDING", {
-            fontSize: "14px", color: "#ffffff", fontStyle: "bold"
-        });
-        this.vendingStatus = this.add.text(mx(695), my(395), this.coffeeQuestCompleted ? "ONLINE" : "ERROR", {
-            fontSize: "12px", color: this.coffeeQuestCompleted ? "#7dffb3" : "#ff7777", fontStyle: "bold"
-        });
+        // VENDING MACHINE — outside the Canteen, on the grass beside the
+        // outdoor dining area. Keep the same interactive body reference.
+        const vendingX = 480;
+        const vendingY = 810;
+        this.vendingMachine = this.add.rectangle(vendingX, vendingY, 58, 78, 0x273746)
+            .setStrokeStyle(3, 0x57cc99).setDepth(3);
+        this.add.rectangle(vendingX, vendingY - 17, 39, 24, 0x5dade2)
+            .setStrokeStyle(2, 0x9be7f0).setDepth(4);
+        this.add.rectangle(vendingX, vendingY + 13, 39, 22, 0x17202a)
+            .setStrokeStyle(2, 0x6b8794).setDepth(4);
+        this.add.rectangle(vendingX + 18, vendingY + 13, 5, 5, 0xf2cc60).setDepth(5);
+        this.add.rectangle(vendingX - 18, vendingY + 13, 5, 5, 0x57cc99).setDepth(5);
+        this.add.text(vendingX, vendingY - 48, "CANTEEN CAFÉ", {
+            fontSize: "9px", color: "#fff4d6", fontStyle: "bold",
+            backgroundColor: "#245b49", padding: { x: 4, y: 3 }
+        }).setOrigin(0.5).setDepth(5);
+        this.vendingStatus = this.add.text(vendingX, vendingY + 52,
+            this.coffeeQuestCompleted ? "ONLINE" : "ERROR", {
+                fontSize: "10px", color: this.coffeeQuestCompleted ? "#7dffb3" : "#ff7777",
+                fontStyle: "bold", backgroundColor: "#17202a", padding: { x: 4, y: 2 }
+            }).setOrigin(0.5).setDepth(5);
 
         // LAB PHYSICS
         this.physics.add.existing(this.lab, true);
@@ -2790,7 +2868,7 @@ if (this.energyBarFill) {
         this.interactionBox = this.add.rectangle(400, 520, 390, 54, 0x102633)
             .setStrokeStyle(2, 0x79d7bf);
         this.interactionBox.setAlpha(0.94);
-        this.interactionBox.setDepth(10);
+        this.interactionBox.setDepth(10000);
         this.interactionBox.setScrollFactor(0);
 
         // INTERACTION TEXT
@@ -2805,7 +2883,7 @@ if (this.energyBarFill) {
         );
 
         this.interactionText.setOrigin(0.5);
-        this.interactionText.setDepth(11);
+        this.interactionText.setDepth(10000);
         this.interactionText.setScrollFactor(0);
 
         this.interactionBox.setVisible(false);
@@ -2814,11 +2892,11 @@ if (this.energyBarFill) {
         // Compact RPG-style HUD panels keep quest and player status readable
         // without covering the center of the campus.
         
-        this.hudPanels = this.add.graphics().setDepth(4);
+        this.hudPanels = this.add.graphics().setDepth(10000);
         this.hudPanels.setScrollFactor(0);
         this.hudPanels.fillStyle(0x07131c, 0.45);
         this.hudPanels.fillRoundedRect(11, 12, 280, 238, 14);
-        this.hudPanels.fillStyle(0x102633, 0.97);
+        this.hudPanels.fillStyle(0x102633, 1);
         this.hudPanels.fillRoundedRect(8, 8, 280, 238, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.98);
         this.hudPanels.strokeRoundedRect(8, 8, 280, 238, 14);
@@ -2830,7 +2908,7 @@ if (this.energyBarFill) {
         this.hudPanels.lineBetween(20, 176, 276, 176);
         this.hudPanels.fillStyle(0x07131c, 0.45);
         this.hudPanels.fillRoundedRect(503, 12, 292, 110, 14);
-        this.hudPanels.fillStyle(0x102633, 0.97);
+        this.hudPanels.fillStyle(0x102633, 1);
         this.hudPanels.fillRoundedRect(500, 8, 292, 110, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
         this.hudPanels.strokeRoundedRect(500, 8, 292, 110, 14);
@@ -2844,7 +2922,7 @@ this.add.text(22, 17, "ACTIVE QUEST", {
     color: "#8da9bb",
     fontStyle: "bold",
     letterSpacing: 2
-}).setDepth(5).setScrollFactor(0);
+}).setDepth(10000).setScrollFactor(0);
 
         this.questStatusText = this.add.text(
             22, 37,
@@ -2856,7 +2934,7 @@ this.add.text(22, 17, "ACTIVE QUEST", {
             }
         );
 
-        this.questStatusText.setDepth(5);
+        this.questStatusText.setDepth(10000);
         this.questStatusText.setScrollFactor(0);
 
         // XP HUD
@@ -2870,7 +2948,7 @@ this.add.text(22, 17, "ACTIVE QUEST", {
             }
         );
 
-        this.xpText.setDepth(5);
+        this.xpText.setDepth(10000);
         this.xpText.setScrollFactor(0);
 
         this.notebookQuestStatusText = this.add.text(
@@ -2881,24 +2959,24 @@ this.add.text(22, 17, "ACTIVE QUEST", {
                 color: "#e7eff6"
             }
         );
-        this.notebookQuestStatusText.setDepth(5);
+        this.notebookQuestStatusText.setDepth(10000);
         this.notebookQuestStatusText.setScrollFactor(0);
 
         this.inventoryHintText = this.add.text(22, 119, "PERSONAL ACCESS  ·  I", {
             fontSize: "10px", color: "#b8d8e2", fontStyle: "bold", letterSpacing: 1
         });
         this.accessTabButton = this.add.rectangle(91, 148, 162, 32, 0x245b49)
-            .setStrokeStyle(1, 0x7cffb2).setDepth(4.5).setScrollFactor(0)
+            .setStrokeStyle(1, 0x7cffb2).setDepth(10000).setScrollFactor(0)
             .setInteractive({ useHandCursor: true });
         this.accessTabButton.on("pointerover", () => this.accessTabButton.setFillStyle(0x34775e));
         this.accessTabButton.on("pointerout", () => this.accessTabButton.setFillStyle(0x245b49));
         this.accessTabButton.on("pointerdown", () => this.showInventory());
         this.accessTabButtonText = this.add.text(91, 148, "OPEN ACCESS TAB  ›", {
             fontSize: "10px", color: "#f4fbf8", fontStyle: "bold", letterSpacing: 1
-        }).setOrigin(0.5).setDepth(5).setScrollFactor(0)
+        }).setOrigin(0.5).setDepth(10000).setScrollFactor(0)
             .setInteractive({ useHandCursor: true });
         this.accessTabButtonText.on("pointerdown", () => this.showInventory());
-        this.inventoryHintText.setDepth(5);
+        this.inventoryHintText.setDepth(10000);
         this.inventoryHintText.setScrollFactor(0);
         this.inventoryHintText.setInteractive({ useHandCursor: true })
             .on("pointerdown", () => this.showInventory());
@@ -2908,25 +2986,25 @@ this.add.text(22, 17, "ACTIVE QUEST", {
         this.treeHintText = this.add.text(22, 190, "T  ·  TREE TRAINING", {
             fontSize: "11px", color: "#9cebd3", fontStyle: "bold"
         });
-        this.treeHintText.setDepth(5);
+        this.treeHintText.setDepth(10000);
         this.treeHintText.setScrollFactor(0);
 
         this.integrationHintText = this.add.text(22, 222, "H HISTORY   Q TASKS   B QUESTS", {
             fontSize: "10px", color: "#c6d5e1", fontStyle: "bold"
         });
-        this.integrationHintText.setDepth(5);
+        this.integrationHintText.setDepth(10000);
         this.integrationHintText.setScrollFactor(0);
         this.historyKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
         this.taskQueueKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
         this.integrationExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
-        // Continuous campus clock: one game minute per two real seconds.
+        // Continuous campus clock: one game minute per one real second.
         this.gameMinutes = Phaser.Math.Clamp(Number(gameState.gameMinutes ?? 360), 0, 1439);
         this.gameDay = Math.max(1, Number(gameState.gameDay) || 1);
         this.gameClockText = this.add.text(515, 91, formatGameClock(), {
             fontSize: "14px", color: "#fff4d6", fontStyle: "bold"
         });
-        this.gameClockText.setDepth(5);
+        this.gameClockText.setDepth(10000);
         this.gameClockText.setScrollFactor(0);
         this.gameClockListener = (timeText) => {
             this.gameMinutes = gameState.gameMinutes;
@@ -2937,12 +3015,25 @@ this.add.text(22, 17, "ACTIVE QUEST", {
         gameClockListeners.add(this.gameClockListener);
         startGameClock();
 
+        // Temporary lighting preview keys. F4 returns to the live in-game clock.
+        this.lightingPreviewMode = null;
+        this.lightingPreviewKeys = {
+            day: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+            evening: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+            night: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
+            live: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR)
+        };
+        this.lightingPreviewHint = this.add.text(700, 214, "1 DAY · 2 EVE · 3 NIGHT · 4 AUTO", {
+            fontSize: "8px", color: "#9cebd3", fontStyle: "bold"
+        }).setOrigin(0.5).setDepth(10002).setScrollFactor(0);
+        this.updateWorldLighting();
+
        this.coffeeQuestStatusText = this.add.text(22, 66, "Next · Talk to your friend", {
     fontSize: "12px",
     color: "#e7eff6",
     wordWrap: { width: 245 }
 });
-this.coffeeQuestStatusText.setDepth(5);
+this.coffeeQuestStatusText.setDepth(10000);
 this.coffeeQuestStatusText.setScrollFactor(0);
 
         this.playerStatsText = this.add.text(515, 20, "PLAYER  ·  Loading…", {
@@ -2950,7 +3041,7 @@ this.coffeeQuestStatusText.setScrollFactor(0);
             color: "#e7eff6",
             lineSpacing: 5
         });
-        this.playerStatsText.setDepth(5);
+        this.playerStatsText.setDepth(10000);
         this.playerStatsText.setScrollFactor(0);
 
 // ENERGY BAR HUD
@@ -2958,17 +3049,17 @@ this.energyLabelText = this.add.text(515, 43, "ENERGY  100/100", {
     fontSize: "11px",
     color: "#b8c7d9",
     fontStyle: "bold"
-}).setDepth(5).setScrollFactor(0);
+}).setDepth(10000).setScrollFactor(0);
 
 this.energyBarBackground = this.add.graphics()
-    .setDepth(5)
+    .setDepth(10000)
     .setScrollFactor(0);
 
 this.energyBarBackground.fillStyle(0x263746, 1);
 this.energyBarBackground.fillRoundedRect(515, 67, 250, 10, 5);
 
 this.energyBarFill = this.add.graphics()
-    .setDepth(6)
+    .setDepth(10000)
     .setScrollFactor(0);
 
 this.energyBarFill.fillStyle(0x57cc99, 1);
@@ -3008,11 +3099,11 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
 
     createMiniMap() {
         this.minimapPanel = this.add.rectangle(700, 174, 176, 104, 0x102633, 0.98)
-            .setStrokeStyle(2, 0x5cc7b2).setDepth(6).setScrollFactor(0);
+            .setStrokeStyle(2, 0x5cc7b2).setDepth(10000).setScrollFactor(0);
         this.minimapLabel = this.add.text(622, 132, "CAMPUS MAP  ·  LIVE", {
             fontSize: "9px", color: "#9cebd3", fontStyle: "bold", letterSpacing: 1
-        }).setDepth(7).setScrollFactor(0);
-        this.minimapGraphic = this.add.graphics().setDepth(7).setScrollFactor(0);
+        }).setDepth(10000).setScrollFactor(0);
+        this.minimapGraphic = this.add.graphics().setDepth(10000).setScrollFactor(0);
         this.minimapLayout = { x: 622, y: 147, width: 156, height: 54 };
         this.updateMiniMap();
     }
@@ -3038,6 +3129,8 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
             const p = point(worldX, worldY);
             g.fillStyle(color, 1).fillRoundedRect(p.x - 4, p.y - 3, 8, 6, 2);
         });
+        const vendingPoint = point(480, 810);
+        g.fillStyle(0x57cc99, 1).fillRect(vendingPoint.x - 2, vendingPoint.y - 3, 4, 6);
         const playerPoint = point(this.player.x, this.player.y);
         g.fillStyle(0xffd166, 1).fillCircle(playerPoint.x, playerPoint.y, 4);
         g.lineStyle(1, 0xffffff, 1).strokeCircle(playerPoint.x, playerPoint.y, 4);
@@ -3091,22 +3184,63 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
 
 
     // ==========================================
-    // CONTINUOUS GAME CLOCK — 1 MINUTE / 2 REAL SECONDS
+    // CAMPUS LIGHTING — DAY / EVENING / NIGHT
     // ==========================================
-    advanceGameMinute() {
-        this.gameMinutes++;
-        if (this.gameMinutes >= 1440) {
-            this.gameMinutes = 0;
-            this.gameDay++;
+    updateWorldLighting() {
+        const minutes = Phaser.Math.Clamp(Number(gameState.gameMinutes) || 0, 0, 1439);
+        const hour = Math.floor(minutes / 60);
+        const preview = this.lightingPreviewMode;
+        const effectiveHour = preview === "day" ? 12
+            : preview === "evening" ? 18
+            : preview === "night" ? 22 : hour;
+        let ground = 0x4f9858;
+        let tint = 0x17243b;
+        let tintAlpha = 0;
+        let lampAlpha = 0;
+
+        if (effectiveHour >= 5 && effectiveHour < 7) {
+            // Sunrise: a soft, warm morning tint.
+            ground = 0x6b9860;
+            tint = 0xf0b875;
+            tintAlpha = 0.10;
+        } else if (effectiveHour >= 7 && effectiveHour < 17) {
+            // Bright daytime.
+            ground = 0x4f9858;
+        } else if (effectiveHour >= 17 && effectiveHour < 20) {
+            // Evening: warmer grass and amber lanterns.
+            ground = 0x77704d;
+            tint = 0xe58b55;
+            tintAlpha = 0.20;
+            lampAlpha = 0.18;
+        } else {
+            // Night: cool blue ambient light and illuminated campus lamps.
+            ground = 0x344b55;
+            tint = 0x101d3c;
+            tintAlpha = 0.43;
+            lampAlpha = 0.52;
         }
+
+        if (this.campusBackground) this.campusBackground.setFillStyle(ground);
+        if (this.campusLighting) this.campusLighting.setFillStyle(tint, tintAlpha);
+        if (this.campusLampGlows) {
+            this.campusLampGlows.forEach(glow => {
+                if (glow?.active) glow.setAlpha(lampAlpha);
+            });
+        }
+        this.campusTimePeriod = effectiveHour >= 17 && effectiveHour < 20
+            ? "EVENING"
+            : (effectiveHour >= 20 || effectiveHour < 5 ? "NIGHT" : "DAY");
+    }
+
+    // Kept as a single-minute helper for any future in-game time actions.
+    advanceGameMinute() {
+        this.gameMinutes = (Number(gameState.gameMinutes) + 1) % 1440;
+        if (this.gameMinutes === 0) this.gameDay = Math.max(1, Number(gameState.gameDay) || 1) + 1;
         gameState.gameMinutes = this.gameMinutes;
         gameState.gameDay = this.gameDay;
-        this.gameClockText.setText(formatGameClock());
-        let ground = 0x3a7d44;
-        if (hour >= 12 && hour < 17) ground = 0x4d8b49;
-        else if (hour >= 17 && hour < 20) ground = 0x6b6847;
-        else if (hour >= 20 || hour < 6) ground = 0x202c48;
-        if (this.campusBackground) this.campusBackground.setFillStyle(ground);
+        this.gameClockText?.setText(formatGameClock());
+        this.updateWorldLighting();
+        persistGameState();
     }
 
     // ==========================================
@@ -3159,11 +3293,11 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         this.debugQuestObjects?.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
         const add = obj => {
-            obj.setDepth(120).setScrollFactor(0);
+            obj.setDepth(10050).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
-        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.88));
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 1));
         add(this.add.rectangle(400, 300, 690, 520, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 68, "DEBUGGING QUEST QUEUE", {
             fontSize: "25px", color: "#7CFFB2", fontStyle: "bold"
@@ -3205,7 +3339,7 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         this.debugQuestObjects.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
         const add = obj => {
-            obj.setDepth(125).setScrollFactor(0);
+            obj.setDepth(10051).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
@@ -3259,7 +3393,7 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         this.debugCodeChallengeOpen = true;
         this.currentDebugQuest = quest;
         const add = obj => {
-            obj.setDepth(125).setScrollFactor(0);
+            obj.setDepth(10051).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
@@ -3413,14 +3547,14 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         this.player.body.setVelocity(0);
         this.treeChallengeObjects = [];
 
-        const add = (obj) => { obj.setScrollFactor(0); this.treeChallengeObjects.push(obj); return obj; };
-        add(this.add.rectangle(400, 300, 720, 520, 0x101820, 0.97).setStrokeStyle(3, 0x57cc99).setDepth(100));
+        const add = (obj) => { obj.setDepth(10060).setScrollFactor(0); this.treeChallengeObjects.push(obj); return obj; };
+        add(this.add.rectangle(400, 300, 720, 520, 0x101820, 0.97).setStrokeStyle(3, 0x57cc99).setDepth(10060));
         add(this.add.text(400, 65, "TREE TRAINING — BINARY SEARCH TREE", {
             fontSize: "24px", color: "#7CFFB2", fontStyle: "bold", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
         add(this.add.text(400, 100, "Insert 40, 20, 60, 10, 30 into a BST", {
             fontSize: "18px", color: "#ffffff", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
 
         // Build the actual C tree when its Emscripten module is available.
         const module = await treeReady;
@@ -3432,7 +3566,7 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         }
 
         // Draw the teaching tree in Phaser. Values mirror the C insert sequence.
-        const line = (x1, y1, x2, y2) => add(this.add.line(0, 0, x1, y1, x2, y2, 0x7CFFB2).setLineWidth(3).setDepth(101));
+        const line = (x1, y1, x2, y2) => add(this.add.line(0, 0, x1, y1, x2, y2, 0x7CFFB2).setLineWidth(3).setDepth(10060));
         line(400, 170, 280, 230); line(400, 170, 520, 230); line(280, 230, 220, 290); line(280, 230, 335, 290);
         const node = (x, y, label) => {
             add(this.add.circle(x, y, 25, 0x245b49).setStrokeStyle(3, 0x7CFFB2).setDepth(102));
@@ -3441,12 +3575,12 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         node(400, 170, 40); node(280, 230, 20); node(520, 230, 60); node(220, 290, 10); node(335, 290, 30);
         add(this.add.text(400, 335, "Question: What is the INORDER traversal?", {
             fontSize: "20px", color: "#ffffff", fontStyle: "bold", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
 
         const options = ["10, 20, 30, 40, 60", "40, 20, 10, 30, 60", "10, 30, 20, 60, 40"];
         options.forEach((answer, index) => {
             const y = 385 + index * 48;
-            const button = add(this.add.rectangle(400, y, 440, 38, 0x263746).setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }).setDepth(101));
+            const button = add(this.add.rectangle(400, y, 440, 38, 0x263746).setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }).setDepth(10060));
             const label = add(this.add.text(400, y, `${String.fromCharCode(65 + index)}) ${answer}`, {
                 fontSize: "17px", color: "#ffffff", align: "center"
             }).setOrigin(0.5).setDepth(102));
@@ -3454,7 +3588,7 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         });
         add(this.add.text(400, 535, "Press ESC to close  •  Correct answer earns +20 XP", {
             fontSize: "15px", color: "#b8c7d9", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
     }
 
     async answerTreeChallenge(correct, button, label) {
@@ -3510,6 +3644,23 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
     // ==========================================
 
     update() {
+
+        if (this.lightingPreviewKeys) {
+            let previewChanged = false;
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.day)) {
+                this.lightingPreviewMode = "day"; previewChanged = true;
+            }
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.evening)) {
+                this.lightingPreviewMode = "evening"; previewChanged = true;
+            }
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.night)) {
+                this.lightingPreviewMode = "night"; previewChanged = true;
+            }
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.live)) {
+                this.lightingPreviewMode = null; previewChanged = true;
+            }
+            if (previewChanged) this.updateWorldLighting();
+        }
 
         if (this.minimapPanel?.visible && !this.interiorActive) this.updateMiniMap();
         if (this.interiorActive) {
@@ -3666,6 +3817,7 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         // NORMALIZE DIAGONAL MOVEMENT
         this.player.body.velocity.normalize().scale(speed);
         updatePlayerAnimation(this.player, this.player.body.velocity.x, this.player.body.velocity.y);
+        this.player.setDepth(this.player.y + 30);
 
         // Find the closest interactable character/object.
         const targets = [
@@ -3816,10 +3968,10 @@ class InteriorScene extends Phaser.Scene {
         // Keep a visible, direct way back in every room. This avoids trapping
         // the player if they miss the door marker or load beside furniture.
         this.returnButton = this.add.rectangle(680, 112, 184, 38, 0x245b49)
-            .setStrokeStyle(2, 0x9be7b0).setInteractive({ useHandCursor: true }).setDepth(10);
+            .setStrokeStyle(2, 0x9be7b0).setInteractive({ useHandCursor: true }).setDepth(10000);
         this.returnButtonLabel = this.add.text(680, 112, "← RETURN TO CAMPUS", {
             fontSize: "12px", color: "#ffffff", fontStyle: "bold"
-        }).setOrigin(0.5).setDepth(11);
+        }).setOrigin(0.5).setDepth(10000);
         this.returnButton.on("pointerdown", () => this.returnToCampus());
         this.returnButtonLabel.setInteractive({ useHandCursor: true })
             .on("pointerdown", () => this.returnToCampus());
@@ -3965,7 +4117,7 @@ class InteriorScene extends Phaser.Scene {
     showPanel(title, body) {
         this.closePanel();
         this.panelOpen = true;
-        const add = object => { object.setDepth(100); this.panelObjects.push(object); return object; };
+        const add = object => { object.setDepth(10070).setScrollFactor(0); this.panelObjects.push(object); return object; };
         add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.92));
         add(this.add.rectangle(400, 300, 650, 465, 0x182b35).setStrokeStyle(3, 0x7cffb2));
         add(this.add.text(400, 105, title, { fontSize: "25px", color: "#7cffb2", fontStyle: "bold", align: "center" }).setOrigin(0.5));
