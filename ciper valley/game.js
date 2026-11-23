@@ -37,6 +37,7 @@ function loadGameState() {
         labPracticeCompleted: {},
         debugQuestCompleted: {},
         mentorIntroSeen: false,
+        friendIntroSeen: false,
         activeDebugQuestId: null,
         inventory: {},
         actionHistory: [],
@@ -94,9 +95,35 @@ function loadGameState() {
     }
 }
 
+// ==========================================
+// LAUNCH FLOW: NEW GAME OR CONTINUE
+// ==========================================
+
+const launchParams = new URLSearchParams(
+    globalThis.location?.search || ""
+);
+
+let hasValidSave = false;
+
+try {
+    const savedData = JSON.parse(
+        globalThis.localStorage?.getItem(SAVE_KEY) || "null"
+    );
+
+    hasValidSave = savedData?.version === 1;
+} catch (error) {
+    console.warn("Could not check existing save:", error);
+}
+
+const shouldPlayPrologue =
+    launchParams.has("newgame") || !hasValidSave;
+
 const gameState = loadGameState();
 
 function persistGameState() {
+    // Never write an old save while NEW GAME is restarting the application.
+    if (globalThis.window?.__cipherValleyStartingNewGame) return;
+
     try {
         globalThis.localStorage?.setItem(SAVE_KEY, JSON.stringify(gameState));
     } catch (error) {
@@ -114,7 +141,9 @@ function formatGameClock() {
     const minute = minutes % 60;
     const period = hour >= 12 ? "PM" : "AM";
     const hour12 = hour % 12 || 12;
-    return `DAY ${gameState.gameDay} | ${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
+    const phase = hour >= 20 || hour < 5 ? "NIGHT"
+        : (hour >= 17 ? "EVENING" : (hour < 7 ? "SUNRISE" : "DAY"));
+    return `DAY ${gameState.gameDay} | ${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period} · ${phase}`;
 }
 
 function startGameClock() {
@@ -124,7 +153,7 @@ function startGameClock() {
         if (gameState.gameMinutes === 0) gameState.gameDay = Math.max(1, Number(gameState.gameDay) || 1) + 1;
         gameClockListeners.forEach(listener => listener(formatGameClock()));
         persistGameState();
-    }, 2000);
+    }, 1000);
 }
 
 if (globalThis.window) {
@@ -346,31 +375,98 @@ function createPixelCharacterTexture(scene, key, shirtColor) {
     const frameHeight = 48;
     const texture = scene.textures.createCanvas(key, frameWidth * 4, frameHeight * 4);
     const context = texture.context;
-    const drawPixel = (x, y, width, height, color) => {
+    context.imageSmoothingEnabled = false;
+    const px = (x, y, w, h, color) => {
         context.fillStyle = color;
-        context.fillRect(x, y, width, height);
+        context.fillRect(x, y, w, h);
     };
+    const isMentor = key.includes('mentor');
+    const isAssistant = key.includes('assistant');
+    const isShopkeeper = key.includes('shopkeeper');
+    const isFriend = key.includes('friend');
+    const skin = isMentor ? '#c58b68' : isFriend ? '#e0aa82' : '#d99b72';
+    const hair = isMentor ? '#b8b8ad' : isAssistant ? '#292b38' : isShopkeeper ? '#493126' : isFriend ? '#493047' : '#30251f';
+    const pants = isShopkeeper ? '#34465a' : isMentor ? '#343e50' : '#34445b';
+    const accent = isMentor ? '#f0c66b' : isAssistant ? '#b7eee0' : isShopkeeper ? '#fff0b8' : isFriend ? '#e9b7ff' : '#f5d27a';
     for (let direction = 0; direction < 4; direction++) {
         for (let frame = 0; frame < 4; frame++) {
             const ox = frame * frameWidth;
             const oy = direction * frameHeight;
             const step = frame === 1 ? -2 : frame === 3 ? 2 : 0;
-            drawPixel(ox + 9, oy + 3, 14, 12, "#d9a477");
-            drawPixel(ox + 8, oy + 2, 16, 6, "#32231f");
-            if (direction === 3) drawPixel(ox + 8, oy + 4, 16, 10, "#32231f");
-            if (direction !== 3) {
-                drawPixel(ox + 11, oy + 9, 2, 2, "#231b1a");
-                drawPixel(ox + 19, oy + 9, 2, 2, "#231b1a");
+            // Soft ground shadow and shoes
+            px(ox + 7, oy + 43, 19, 3, '#24302e');
+            px(ox + 8 + step, oy + 41, 8, 4, '#252936');
+            px(ox + 17 - step, oy + 41, 8, 4, '#252936');
+            px(ox + 9 + step, oy + 41, 5, 1, '#8e9aa4');
+            px(ox + 18 - step, oy + 41, 5, 1, '#8e9aa4');
+            // Legs and clothing silhouette
+            px(ox + 9 + step, oy + 29, 6, 13, pants);
+            px(ox + 17 - step, oy + 29, 6, 13, pants);
+            px(ox + 8 + step, oy + 30, 2, 10, '#52627a');
+            px(ox + 22 - step, oy + 30, 2, 10, '#52627a');
+            // Arms behind torso
+            px(ox + 5, oy + 18, 5, 12, shirtColor);
+            px(ox + 22, oy + 18, 5, 12, shirtColor);
+            px(ox + 5, oy + 27, 5, 4, skin);
+            px(ox + 22, oy + 27, 5, 4, skin);
+            // Torso, collar and role-specific clothing details
+            px(ox + 8, oy + 16, 16, 15, shirtColor);
+            px(ox + 10, oy + 16, 12, 2, accent);
+            px(ox + 7, oy + 20, 3, 8, '#ffffff');
+            px(ox + 22, oy + 20, 3, 8, '#ffffff');
+            if (isMentor) {
+                px(ox + 14, oy + 19, 4, 10, '#f1d28b');
+                px(ox + 13, oy + 22, 6, 2, '#fff2c6');
+            } else if (isAssistant) {
+                px(ox + 13, oy + 19, 6, 11, '#e8f5ef');
+                px(ox + 15, oy + 21, 2, 7, '#2e8278');
+            } else if (isShopkeeper) {
+                px(ox + 10, oy + 20, 12, 9, '#8d4f2d');
+                px(ox + 12, oy + 22, 8, 2, '#f3d58a');
+            } else if (isFriend) {
+                px(ox + 10, oy + 20, 3, 8, '#d7a6ef');
+                px(ox + 19, oy + 20, 3, 8, '#d7a6ef');
+            } else {
+                // Player's small explorer-style chest badge and backpack straps
+                px(ox + 9, oy + 18, 2, 11, '#176f68');
+                px(ox + 21, oy + 18, 2, 11, '#176f68');
+                px(ox + 14, oy + 22, 4, 4, '#f4d16c');
             }
-            drawPixel(ox + 7, oy + 16, 18, 14, shirtColor);
-            drawPixel(ox + 4, oy + 17, 4, 11, shirtColor);
-            drawPixel(ox + 24, oy + 17, 4, 11, shirtColor);
-            drawPixel(ox + 9 + step, oy + 29, 6, 13, "#303d5a");
-            drawPixel(ox + 17 - step, oy + 29, 6, 13, "#303d5a");
-            drawPixel(ox + 8 + step, oy + 41, 8, 4, "#2a2423");
-            drawPixel(ox + 16 - step, oy + 41, 8, 4, "#2a2423");
-            if (direction === 1) drawPixel(ox + 7, oy + 3, 4, 12, "#32231f");
-            if (direction === 2) drawPixel(ox + 21, oy + 3, 4, 12, "#32231f");
+            // Neck and face
+            px(ox + 13, oy + 12, 6, 6, skin);
+            px(ox + 9, oy + 4, 14, 12, skin);
+            px(ox + 8, oy + 8, 2, 4, skin);
+            px(ox + 22, oy + 8, 2, 4, skin);
+            // Hair silhouette varies by role
+            px(ox + 8, oy + 2, 16, 6, hair);
+            px(ox + 7, oy + 5, 4, 7, hair);
+            px(ox + 21, oy + 5, 4, 7, hair);
+            if (direction === 3) {
+                px(ox + 8, oy + 4, 16, 11, hair);
+                px(ox + 10, oy + 12, 12, 3, hair);
+            } else {
+                px(ox + 11, oy + 9, 2, 2, '#29232a');
+                px(ox + 19, oy + 9, 2, 2, '#29232a');
+                px(ox + 13, oy + 13, 6, 1, '#9d5c54');
+            }
+            if (isMentor) {
+                px(ox + 7, oy + 2, 18, 3, '#e1dfd1');
+                px(ox + 9, oy + 1, 14, 2, '#f5f0dc');
+            } else if (isAssistant) {
+                px(ox + 8, oy + 1, 16, 3, '#292b38');
+                px(ox + 12, oy + 1, 8, 2, '#59647b');
+            } else if (isShopkeeper) {
+                px(ox + 7, oy + 1, 18, 4, '#6c4327');
+                px(ox + 9, oy, 14, 2, '#dca84f');
+            } else if (isFriend) {
+                px(ox + 8, oy + 1, 16, 4, '#5b3a61');
+                px(ox + 20, oy + 4, 4, 7, '#5b3a61');
+            }
+            // Small identity details remain readable at the game's sprite scale
+            if (isMentor) px(ox + 23, oy + 19, 2, 7, '#f0c66b'); // mentor badge
+            if (isAssistant) px(ox + 22, oy + 23, 3, 4, '#d9f3ed'); // lab badge
+            if (isShopkeeper) px(ox + 13, oy + 28, 6, 3, '#f3d58a'); // apron pocket
+            if (isFriend) px(ox + 23, oy + 17, 2, 5, '#f1c7ff');
         }
     }
     texture.refresh();
@@ -379,6 +475,47 @@ function createPixelCharacterTexture(scene, key, shirtColor) {
             texture.add(`d${direction}f${frame}`, 0, frame * frameWidth, direction * frameHeight, frameWidth, frameHeight);
         }
     }
+}
+
+function createCampusBuilding(scene, x, y, width, height, palette, label, labelSize = '16px') {
+    // Decorative layers sit behind the original static body, so the existing
+    // physics collider and entrance coordinates remain unchanged.
+    scene.add.rectangle(x + 4, y + 9, width + 8, height + 8, 0x172b25, 0.28).setDepth(0);
+    const roof = scene.add.rectangle(x, y - height * 0.38, width + 16, height * 0.34, palette.roof)
+        .setStrokeStyle(3, palette.trim).setDepth(1);
+    scene.add.rectangle(x, y - height * 0.22, width + 5, 7, palette.highlight).setDepth(2);
+    const body = scene.add.rectangle(x, y, width, height, palette.wall)
+        .setStrokeStyle(4, palette.trim).setDepth(2);
+    // Upper fascia and lower stone foundation
+    scene.add.rectangle(x, y - height * 0.34, width - 8, 8, palette.highlight).setDepth(3);
+    scene.add.rectangle(x, y + height * 0.39, width - 8, 9, palette.base).setDepth(3);
+    // Repeated windows, each with a frame, glass and central mullion
+    const windowY = y - height * 0.08;
+    [-0.31, 0.31].forEach(offset => {
+        const wx = x + width * offset;
+        scene.add.rectangle(wx, windowY, Math.max(20, width * 0.19), height * 0.31, palette.trim).setDepth(4);
+        scene.add.rectangle(wx, windowY, Math.max(15, width * 0.15), height * 0.24, palette.glass).setDepth(5);
+        scene.add.rectangle(wx, windowY, 3, height * 0.24, palette.highlight).setDepth(6);
+        scene.add.rectangle(wx, windowY, Math.max(15, width * 0.15), 3, palette.highlight).setDepth(6);
+    });
+    // Signboard gives each campus building a clear identity
+    const signY = y - height * 0.52;
+    scene.add.rectangle(x, signY, Math.min(width * 0.76, 190), 23, 0x183b3c)
+        .setStrokeStyle(2, palette.highlight).setDepth(7);
+    scene.add.text(x, signY, label, {
+        fontFamily: 'Arial', fontSize: labelSize, color: '#fff8df',
+        fontStyle: 'bold', align: 'center', stroke: '#173332', strokeThickness: 2
+    }).setOrigin(0.5).setDepth(8);
+    return body;
+}
+
+function addCampusTree(scene, x, y, scale = 1) {
+    scene.add.ellipse(x + 3 * scale, y + 17 * scale, 42 * scale, 13 * scale, 0x183526, 0.25);
+    scene.add.rectangle(x, y + 12 * scale, 9 * scale, 25 * scale, 0x76502f).setStrokeStyle(1, 0x4c3928);
+    scene.add.circle(x - 8 * scale, y - 3 * scale, 15 * scale, 0x246342).setStrokeStyle(2, 0x6da66b);
+    scene.add.circle(x + 8 * scale, y - 7 * scale, 17 * scale, 0x2e7548).setStrokeStyle(2, 0x82b66d);
+    scene.add.circle(x, y - 17 * scale, 13 * scale, 0x3d8951).setStrokeStyle(2, 0x9acb76);
+    scene.add.circle(x - 5 * scale, y - 20 * scale, 4 * scale, 0xb4d889, 0.75);
 }
 
 function ensureCharacterAnimations(scene) {
@@ -413,6 +550,330 @@ function updatePlayerAnimation(player, velocityX, velocityY) {
     } else {
         player.anims.stop();
         player.setFrame(`d${player.lastDirection || 0}f0`);
+    }
+}
+
+// ==========================================
+// BOOT SCENE — CHOOSE THE GAME START
+// ==========================================
+
+class BootScene extends Phaser.Scene {
+    constructor() {
+        super("BootScene");
+    }
+
+    create() {
+        if (shouldPlayPrologue) {
+            this.scene.start("PrologueScene");
+        } else {
+            this.scene.start("GameScene");
+        }
+    }
+}
+
+
+// ==========================================
+// PROLOGUE SCENE — OPENING
+// ==========================================
+
+class PrologueScene extends Phaser.Scene {
+    constructor() {
+        super("PrologueScene");
+    }
+
+    create() {
+        this.cameras.main.setBackgroundColor("#05090d");
+        this.cameras.main.fadeIn(1000, 0, 0, 0);
+
+        this.introStarted = false;
+        this.introFinished = false;
+
+        this.showOpeningScreen();
+
+        this.input.keyboard.on("keydown-ESC", () => {
+            this.skipIntro();
+        });
+    }
+
+    showOpeningScreen() {
+        this.add.text(400, 210, "A NEW JOURNEY AWAITS", {
+            fontSize: "20px",
+            color: "#7cffb2",
+            fontStyle: "bold",
+            letterSpacing: 4
+        }).setOrigin(0.5);
+
+        this.add.text(400, 280, "CIPHER VALLEY", {
+            fontSize: "55px",
+            color: "#ffffff",
+            fontStyle: "bold"
+        }).setOrigin(0.5);
+
+        const enter = this.add.text(
+            400, 440, "PRESS ENTER TO BEGIN", {
+                fontSize: "18px",
+                color: "#7cffb2",
+                fontStyle: "bold"
+            }
+        ).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: enter,
+            alpha: 0.25,
+            duration: 800,
+            yoyo: true,
+            repeat: -1
+        });
+
+        this.add.text(400, 510, "ESC — SKIP INTRO", {
+            fontSize: "12px",
+            color: "#82919c"
+        }).setOrigin(0.5);
+
+        this.input.keyboard.once("keydown-ENTER", () => {
+            this.startCinematic();
+        });
+
+        this.input.keyboard.once("keydown-SPACE", () => {
+            this.startCinematic();
+        });
+    }
+
+    startCinematic() {
+        if (this.introStarted) return;
+        this.introStarted = true;
+
+        this.children.removeAll();
+
+        this.cameras.main.fadeOut(500);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+            this.showSystemSequence();
+            this.cameras.main.fadeIn(700);
+        });
+    }
+
+    showSystemSequence() {
+        this.cameras.main.setBackgroundColor("#05090d");
+
+        this.add.text(400, 100, "CIPHER VALLEY NETWORK", {
+            fontSize: "15px",
+            color: "#7cffb2",
+            letterSpacing: 3
+        }).setOrigin(0.5);
+
+        const lines = [
+            "INITIALIZING SYSTEM...",
+            "ESTABLISHING CONNECTION...",
+            "CONNECTION ESTABLISHED.",
+            "DESTINATION: CIPHER VALLEY."
+        ];
+
+        let currentLine = 0;
+
+        const displayNextLine = () => {
+            if (currentLine >= lines.length) {
+                this.time.delayedCall(1500, () => {
+                    this.showValleyReveal();
+                });
+                return;
+            }
+
+            const line = this.add.text(
+                400,
+                220 + currentLine * 48,
+                "> " + lines[currentLine],
+                {
+                    fontSize: "20px",
+                    color: "#7cffb2",
+                    fontFamily: "monospace"
+                }
+            ).setOrigin(0.5);
+
+            line.setAlpha(0);
+
+            this.tweens.add({
+                targets: line,
+                alpha: 1,
+                duration: 500
+            });
+
+            currentLine++;
+            this.time.delayedCall(1100, displayNextLine);
+        };
+
+        displayNextLine();
+    }
+
+   showValleyReveal() {
+    // Clear the previous system-initialization screen.
+    this.children.removeAll();
+
+    this.cameras.main.setBackgroundColor("#82b9d1");
+
+        const sky = this.add.graphics();
+
+        // Distant mountains
+        sky.fillStyle(0x526f86);
+        sky.fillPoints([
+            { x: 0, y: 390 },
+            { x: 180, y: 150 },
+            { x: 340, y: 390 },
+            { x: 520, y: 180 },
+            { x: 800, y: 390 }
+        ], true);
+
+        // Near mountains
+        sky.fillStyle(0x304e49);
+        sky.fillPoints([
+            { x: 0, y: 440 },
+            { x: 180, y: 280 },
+            { x: 370, y: 450 },
+            { x: 570, y: 260 },
+            { x: 800, y: 440 }
+        ], true);
+
+        // Valley ground
+        sky.fillStyle(0x527d4b);
+        sky.fillRect(0, 390, 800, 210);
+
+        // Winding road
+        sky.lineStyle(38, 0xc9ae78);
+        sky.beginPath();
+        sky.moveTo(400, 600);
+        sky.lineTo(440, 510);
+        sky.lineTo(360, 450);
+        sky.lineTo(400, 400);
+        sky.strokePath();
+
+        const title = this.add.text(
+            400, 180, "CIPHER VALLEY", {
+                fontSize: "48px",
+                color: "#ffffff",
+                fontStyle: "bold",
+                stroke: "#263c36",
+                strokeThickness: 7
+            }
+        ).setOrigin(0.5);
+
+        title.setAlpha(0);
+
+        this.tweens.add({
+            targets: title,
+            alpha: 1,
+            duration: 1800,
+            ease: "Power2"
+        });
+
+        const story = this.add.text(
+            400, 275,
+            "A place where curiosity becomes discovery...",
+            {
+                fontSize: "19px",
+                color: "#ffffff",
+                stroke: "#263c36",
+                strokeThickness: 4
+            }
+        ).setOrigin(0.5);
+
+        story.setAlpha(0);
+
+        this.tweens.add({
+            targets: story,
+            alpha: 1,
+            duration: 1500,
+            delay: 1000
+        });
+
+        this.time.delayedCall(5000, () => {
+            this.showAccessTab();
+        });
+    }
+
+    showAccessTab() {
+        this.cameras.main.fadeOut(700);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+            this.children.removeAll();
+            this.cameras.main.setBackgroundColor("#101820");
+
+            this.add.text(400, 150, "NEW ARRIVAL REGISTERED", {
+                fontSize: "17px",
+                color: "#7cffb2",
+                fontStyle: "bold",
+                letterSpacing: 2
+            }).setOrigin(0.5);
+
+            const tab = this.add.rectangle(
+                400, 310, 190, 230, 0x243d4a
+            );
+
+            tab.setStrokeStyle(3, 0x7cffb2);
+
+            this.add.text(400, 245, "CIPHER", {
+                fontSize: "25px",
+                color: "#ffffff",
+                fontStyle: "bold"
+            }).setOrigin(0.5);
+
+            this.add.text(400, 280, "ACCESS TAB", {
+                fontSize: "14px",
+                color: "#7cffb2"
+            }).setOrigin(0.5);
+
+            this.add.text(400, 340, "PROFILE  •  QUESTS", {
+                fontSize: "12px",
+                color: "#ffffff"
+            }).setOrigin(0.5);
+
+            this.add.text(400, 375, "INVENTORY  •  PROGRESS", {
+                fontSize: "12px",
+                color: "#ffffff"
+            }).setOrigin(0.5);
+
+            this.tweens.add({
+                targets: tab,
+                y: 295,
+                duration: 1200,
+                ease: "Back.Out"
+            });
+
+            this.add.text(
+                400, 480,
+                "PERSONAL ACCESS TAB ISSUED.",
+                {
+                    fontSize: "17px",
+                    color: "#7cffb2",
+                    fontStyle: "bold"
+                }
+            ).setOrigin(0.5);
+
+            this.time.delayedCall(3500, () => {
+                this.finishIntro();
+            });
+
+            this.cameras.main.fadeIn(800);
+        });
+    }
+
+    finishIntro() {
+        if (this.introFinished) return;
+        this.introFinished = true;
+
+        this.cameras.main.fadeOut(1000);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+            this.scene.start("GameScene");
+        });
+    }
+
+    skipIntro() {
+        if (!this.introStarted) {
+            this.startCinematic();
+            return;
+        }
+
+        this.finishIntro();
     }
 }
 
@@ -466,12 +927,62 @@ class GameScene extends Phaser.Scene {
         this.integrationPanelOpen = false;
         this.integrationPanelObjects = [];
         this.labAssistant = null;
+
+        
+        
+    }
+
+     // ==========================================
+    // PROTOTYPE ENDING SCREEN
+    // ==========================================
+
+    showPrototypeEnding() {
+        this.prototypeEndingOpen = true;
+        this.prototypeEndingObjects = [];
+
+        const add = obj => {
+            obj.setScrollFactor(0);
+            this.prototypeEndingObjects.push(obj);
+            return obj;
+        };
+
+        add(this.add.rectangle(
+            400, 300, 800, 600, 0x101c2b, 0.96
+        ));
+
+        add(this.add.text(400, 145, "CIPHER VALLEY", {
+            fontSize: "38px",
+            color: "#f5d78e",
+            fontStyle: "bold"
+        }).setOrigin(0.5));
+
+        add(this.add.text(400, 205, "PROTOTYPE COMPLETE", {
+            fontSize: "23px",
+            color: "#7cffb2"
+        }).setOrigin(0.5));
+
+        add(this.add.text(
+            400, 300,
+            "Your journey through Cipher Valley has just begun.\n\nYou've explored the campus, solved challenges,\nand taken your first steps into programming.",
+            {
+                fontSize: "19px",
+                color: "#ffffff",
+                align: "center",
+                lineSpacing: 10
+            }
+        ).setOrigin(0.5));
+
+        add(this.add.text(
+            400, 455,
+            "THANK YOU FOR PLAYING THE PROTOTYPE", {
+                fontSize: "16px",
+                color: "#f5d78e"
+            }
+        ).setOrigin(0.5));
     }
 
 
-    // ==========================================
-    // DSA CHALLENGE
-    // ==========================================
+    
 
     showDSAChallenge() {
 
@@ -867,9 +1378,21 @@ class GameScene extends Phaser.Scene {
             this.playerTotalXP = cppPlayerModule.ccall("playerGetXP", "number", [], []);
             this.dsaXP = this.playerTotalXP;
             if (this.playerStatsText) {
-                this.playerStatsText.setText(
-                    "LEVEL " + this.playerLevel + "   ·   XP " + this.playerTotalXP + "\nENERGY  " + this.playerEnergy + "/100   ·   SHIFT sprint"
-                );
+              this.playerStatsText.setText(
+    "LEVEL " + this.playerLevel + "   ·   XP " + this.playerTotalXP
+);
+
+if (this.energyLabelText) {
+    this.energyLabelText.setText("ENERGY  " + this.playerEnergy + "/100");
+}
+
+if (this.energyBarFill) {
+    this.energyBarFill.clear();
+    this.energyBarFill.fillStyle(0x57cc99, 1);
+    this.energyBarFill.fillRoundedRect(
+        515, 67, 250 * (this.playerEnergy / 100), 10, 5
+    );
+}
             }
         } catch (error) {
             console.error("Could not read C++ Player stats:", error);
@@ -1141,7 +1664,7 @@ class GameScene extends Phaser.Scene {
         this.integrationPanelOpen = true;
         this.player.body.setVelocity(0);
         this.integrationPanelObjects = [];
-        const add = (obj) => { obj.setDepth(60).setScrollFactor(0); this.integrationPanelObjects.push(obj); return obj; };
+        const add = (obj) => { obj.setDepth(10020).setScrollFactor(0); this.integrationPanelObjects.push(obj); return obj; };
         add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
         const isHistory = kind === "history";
         add(this.add.text(400, 55, isHistory ? "ACTION HISTORY — C STACK" : "PENDING TASKS — C CIRCULAR QUEUE", {
@@ -1192,87 +1715,191 @@ class GameScene extends Phaser.Scene {
         if (this.inventoryOpen) return;
         this.inventoryOpen = true;
         this.player.body.setVelocity(0);
-
-        this.interactionBox.setVisible(false);
-        this.interactionText.setVisible(false);
+        this.interactionBox?.setVisible(false);
+        this.interactionText?.setVisible(false);
 
         this.inventoryObjects = [];
-        const add = (obj) => {
-            obj.setDepth(40).setScrollFactor(0);
+        this.inventoryPageObjects = [];
+        const addBase = obj => {
+            obj.setDepth(10030).setScrollFactor(0);
             this.inventoryObjects.push(obj);
             return obj;
         };
-
-        add(this.add.rectangle(400, 300, 800, 600, 0x101820, 0.97));
-        add(this.add.rectangle(400, 300, 760, 560, 0x142733, 1).setStrokeStyle(3, 0x5cc7b2));
-        add(this.add.text(400, 48, "PERSONAL ACCESS TAB", {
-            fontSize: "28px", color: "#ffffff", fontStyle: "bold"
+        addBase(this.add.rectangle(400, 300, 800, 600, 0x06111a, 0.96));
+        addBase(this.add.rectangle(400, 300, 758, 558, 0x10232d, 1).setStrokeStyle(3, 0x5cc7b2));
+        addBase(this.add.rectangle(400, 300, 738, 538, 0x17313d, 1).setStrokeStyle(1, 0x42616d));
+        addBase(this.add.rectangle(400, 20, 720, 3, 0x67d7bd));
+        addBase(this.add.circle(57, 48, 5, 0xffd166));
+        addBase(this.add.text(400, 43, "CIPHER VALLEY  /  PERSONAL ACCESS TAB", {
+            fontSize: "23px", color: "#f4f8f6", fontStyle: "bold", letterSpacing: 1
         }).setOrigin(0.5));
-        add(this.add.text(400, 82, "PROFILE  ·  QUEST LOG  ·  INVENTORY  ·  DEBUG QUEUE", {
-            fontSize: "13px", color: "#9cebd3"
+        addBase(this.add.text(400, 76, "YOUR CAMPUS COMPANION   •   PROFILE, MISSIONS & SYSTEMS", {
+            fontSize: "11px", color: "#91c4bd", letterSpacing: 1
         }).setOrigin(0.5));
-        add(this.add.text(65, 120,
-            `LEVEL ${this.playerLevel}  ·  XP ${this.playerTotalXP}  ·  ENERGY ${this.playerEnergy}/100  ·  COINS ${gameState.coins}`,
-            { fontSize: "14px", color: "#ffe08a", fontStyle: "bold" }));
-        add(this.add.rectangle(225, 267, 330, 236, 0x1d3542).setStrokeStyle(1, 0x466976));
-        add(this.add.rectangle(575, 267, 330, 236, 0x1d3542).setStrokeStyle(1, 0x466976));
-        add(this.add.text(70, 150, "INVENTORY  ·  C HASH TABLE", {
-            fontSize: "15px", color: "#9cebd3", fontStyle: "bold"
-        }));
-        add(this.add.text(425, 150, "QUEST LOG  ·  C++ PLAYER", {
-            fontSize: "15px", color: "#9cebd3", fontStyle: "bold"
-        }));
-        const completedDebugCount = Object.values(this.debugQuestCompleted).filter(Boolean).length;
-        const completedDebugNames = this.getDebugQuestCatalog()
-            .filter(quest => this.debugQuestCompleted[quest.id])
-            .map(quest => quest.title).join(", ") || "None yet";
-        const questSummary = [
-            `Coffee Crisis  ·  ${this.coffeeQuestCompleted ? "COMPLETE" : this.coffeeQuestAccepted ? "ACTIVE" : "AVAILABLE"}`,
-            `Linked List  ·  ${this.questCompleted ? "COMPLETE" : this.coffeeQuestCompleted ? "AVAILABLE" : "LOCKED"}`,
-            `Notebook  ·  ${this.notebookQuestCompleted ? "COMPLETE" : this.notebookQuestAccepted ? "ACTIVE" : "LOCKED"}`,
-            `Debug missions  ·  ${completedDebugCount}/4 complete`,
-            `Debug cleared  ·  ${completedDebugNames}`,
-            `Current area  ·  ${String(gameState.location).toUpperCase()}`
-        ].join("\n");
-        add(this.add.text(425, 178, questSummary, {
-            fontSize: "14px", color: "#f1f5f9", lineSpacing: 8,
-            wordWrap: { width: 300 }
+        addBase(this.add.text(84, 105, "VALLEY LINK  ●  ONLINE", {
+            fontSize: "9px", color: "#75dfb7", fontStyle: "bold", letterSpacing: 1
         }));
 
-        this.inventoryListText = add(this.add.text(70, 178, "Loading C inventory...", {
-            fontSize: "14px", color: "#ffffff", lineSpacing: 5,
-            wordWrap: { width: 300 }
-        }));
-        this.inventoryMessageText = add(this.add.text(400, 420, "", {
-            fontSize: "17px", color: "#ffe08a", align: "center",
-            wordWrap: { width: 650 }
-        }).setOrigin(0.5));
-
-        const button = (x, y, label, callback) => {
-            const b = add(this.add.text(x, y, label, {
-                fontSize: "17px", color: "#ffffff", backgroundColor: "#285943",
-                padding: { x: 12, y: 10 }
-            }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
-            b.on("pointerover", () => b.setStyle({ backgroundColor: "#397957" }));
-            b.on("pointerout", () => b.setStyle({ backgroundColor: "#285943" }));
-            b.on("pointerdown", callback);
-        };
-
-        button(105, 500, "Add Coffee +1", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."));
-        button(300, 500, "Add Notebook +1", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."));
-        button(495, 500, "Search Coffee", () => this.searchInventoryItem("Coffee"));
-        button(690, 500, "Use Coffee", () => this.useInventoryItem("Coffee", 20));
-        button(200, 450, "Use Energy Drink", () => this.useInventoryItem("Energy Drink", 40));
-        button(600, 450, "Use Snack", () => this.useInventoryItem("Snack", 10));
-        button(315, 555, "CLOSE  [I / ESC]", () => this.closeInventory());
-        button(625, 555, "QUEUE  ›", () => {
-            this.closeInventory();
-            this.showDebugQuestBoard();
+        const tabDefs = [
+            [125, "01  PROFILE", "profile"], [308, "02  INVENTORY", "inventory"],
+            [492, "03  QUEST LOG", "quests"], [675, "04  SYSTEMS", "systems"]
+        ];
+        this.accessTabButtons = {};
+        tabDefs.forEach(([x, label, page]) => {
+            const bg = addBase(this.add.rectangle(x, 130, 166, 38, 0x203b47)
+                .setStrokeStyle(1, 0x52717c).setInteractive({ useHandCursor: true }));
+            const txt = addBase(this.add.text(x, 130, label, {
+                fontSize: "11px", color: "#c8d8df", fontStyle: "bold", letterSpacing: 1
+            }).setOrigin(0.5));
+            bg.on("pointerover", () => { if (this.accessTabPage !== page) bg.setFillStyle(0x2a4d58); });
+            bg.on("pointerout", () => { if (this.accessTabPage !== page) bg.setFillStyle(0x203b47); });
+            bg.on("pointerdown", () => this.renderAccessTabPage(page));
+            txt.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.renderAccessTabPage(page));
+            this.accessTabButtons[page] = { bg, txt };
         });
+        addBase(this.add.rectangle(400, 340, 690, 374, 0x1a3541, 1).setStrokeStyle(1, 0x42616d));
+        addBase(this.add.rectangle(400, 527, 650, 1, 0x355766));
+        addBase(this.add.text(400, 565, "I  /  ESC     •     CLOSE ACCESS TAB", {
+            fontSize: "10px", color: "#8faeb8", fontStyle: "bold", letterSpacing: 1
+        }).setOrigin(0.5));
+        const closeBg = addBase(this.add.rectangle(720, 67, 38, 38, 0x263d48)
+            .setStrokeStyle(1, 0x55717a).setInteractive({ useHandCursor: true }));
+        const close = addBase(this.add.text(720, 67, "×", {
+            fontSize: "25px", color: "#f0c77b"
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
+        closeBg.on("pointerdown", () => this.closeInventory());
+        close.on("pointerdown", () => this.closeInventory());
 
         this.inventoryExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        this.accessTabPage = "profile";
+        this.renderAccessTabPage("profile");
         this.animatePanel(this.inventoryObjects);
-        await this.refreshInventoryList();
+    }
+
+    renderAccessTabPage(page) {
+        if (!this.inventoryOpen) return;
+        this.inventoryPageObjects?.forEach(obj => obj?.destroy?.());
+        this.inventoryPageObjects = [];
+        this.inventoryListText = null;
+        this.inventoryMessageText = null;
+        this.accessTabPage = page;
+        const add = obj => {
+            obj.setDepth(10031).setScrollFactor(0);
+            this.inventoryPageObjects.push(obj);
+            return obj;
+        };
+        const label = (x, y, text, size=14, color="#e8f1f2", style="normal") =>
+            add(this.add.text(x, y, text, { fontSize: `${size}px`, color, fontStyle: style, lineSpacing: 7, wordWrap: { width: 610 } }));
+        const card = (x, y, w, h, title) => {
+            add(this.add.rectangle(x, y + 3, w, h, 0x102631, 0.55));
+            add(this.add.rectangle(x, y, w, h, 0x203b47).setStrokeStyle(1, 0x4c707b));
+            add(this.add.rectangle(x - w/2 + 3, y, 4, h - 2, 0x5cc7b2));
+            add(this.add.text(x - w/2 + 18, y - h/2 + 13, title, {
+                fontSize: "12px", color: "#8fe0c6", fontStyle: "bold", letterSpacing: 1
+            }));
+        };
+        const button = (x, y, text, callback, width=145) => {
+            const bg = add(this.add.rectangle(x, y, width, 32, 0x285943)
+                .setStrokeStyle(1, 0x67c9a8).setInteractive({ useHandCursor: true }));
+            const txt = add(this.add.text(x, y, text, {
+                fontSize: "11px", color: "#f4fbf8", fontStyle: "bold"
+            }).setOrigin(0.5));
+            bg.on("pointerover", () => bg.setFillStyle(0x397957));
+            bg.on("pointerout", () => bg.setFillStyle(0x285943));
+            bg.on("pointerdown", callback);
+            txt.setInteractive({ useHandCursor: true }).on("pointerdown", callback);
+        };
+
+        Object.entries(this.accessTabButtons || {}).forEach(([key, controls]) => {
+            const active = key === page;
+            controls.bg.setFillStyle(active ? 0x2b6858 : 0x203b47);
+            controls.bg.setStrokeStyle(active ? 2 : 1, active ? 0x8be0c2 : 0x52717c);
+            controls.txt.setColor(active ? "#ffffff" : "#c8d8df");
+        });
+
+        if (page === "profile") {
+            card(400, 335, 630, 300, "EXPLORER PROFILE  ·  VALLEY STATUS");
+            add(this.add.circle(145, 270, 38, 0x294d59).setStrokeStyle(2, 0x8be0c2));
+            add(this.add.text(145, 270, "CV", { fontSize: "22px", color: "#ffe08a", fontStyle: "bold" }).setOrigin(0.5));
+            label(205, 232, "WELCOME BACK, EXPLORER", 17, "#ffffff", "bold");
+            label(205, 263, `LEVEL  ${this.playerLevel}     •     TOTAL XP  ${this.playerTotalXP}`, 14, "#ffe08a", "bold");
+            label(105, 326, `ENERGY  ${this.playerEnergy}/100`, 12, "#b8d8e2", "bold");
+            add(this.add.graphics().fillStyle(0x10232d, 1).fillRoundedRect(105, 350, 590, 14, 7).lineStyle(1, 0x42616d).strokeRoundedRect(105, 350, 590, 14, 7));
+            const profileEnergyRatio = Math.max(0, Math.min(100, Number(this.playerEnergy) || 0)) / 100;
+            if (profileEnergyRatio > 0) add(this.add.graphics().fillStyle(0x57cc99, 1).fillRoundedRect(107, 352, Math.max(0, 586 * profileEnergyRatio), 10, 5));
+            add(this.add.rectangle(260, 410, 270, 54, 0x263f4b).setStrokeStyle(1, 0x42616d));
+            add(this.add.rectangle(540, 410, 270, 54, 0x263f4b).setStrokeStyle(1, 0x42616d));
+            label(145, 394, `COINS  ${Number(gameState.coins) || 0}`, 13, "#ffe08a", "bold");
+            label(425, 394, formatGameClock(), 13, "#e8f1f2", "bold");
+            label(105, 455, `CURRENT LOCATION  ·  ${String(gameState.location || "campus").toUpperCase()}`, 12, "#9cebd3", "bold");
+            label(105, 482, "Your progress is saved automatically as you explore Cipher Valley.", 11, "#a9bec8");
+            button(400, 515, "VIEW QUEST LOG  ›", () => this.renderAccessTabPage("quests"), 190);
+        } else if (page === "inventory") {
+            card(400, 320, 630, 250, "ITEM STORAGE  ·  C HASH TABLE");
+            label(105, 218, "YOUR ITEMS", 10, "#9cebd3", "bold");
+            this.inventoryListText = add(this.add.text(105, 242, "Loading items from the C hash table...", {
+                fontSize: "12px", color: "#f1f5f9", lineSpacing: 9, wordWrap: { width: 575 }
+            }));
+            this.inventoryMessageText = add(this.add.text(400, 420, this.inventoryMessage || "ITEMS ARE STORED AND SEARCHED THROUGH THE C INVENTORY MODULE.", {
+                fontSize: "10px", color: "#ffe08a", align: "center", wordWrap: { width: 590 }
+            }).setOrigin(0.5));
+            button(155, 470, "+ COFFEE", () => this.addInventoryItem("Coffee", "Restores energy during campus exploration."), 125);
+            button(300, 470, "+ NOTEBOOK", () => this.addInventoryItem("Notebook", "A notebook for recording DSA clues."), 135);
+            button(445, 470, "SEARCH COFFEE", () => this.searchInventoryItem("Coffee"), 135);
+            button(590, 470, "USE COFFEE", () => this.useInventoryItem("Coffee", 20), 125);
+            button(300, 512, "USE ENERGY DRINK", () => this.useInventoryItem("Energy Drink", 40), 165);
+            button(500, 512, "USE SNACK", () => this.useInventoryItem("Snack", 10), 135);
+            this.refreshInventoryList();
+        } else if (page === "quests") {
+            card(400, 350, 630, 320, "CAMPUS STORY  ·  MISSION BOARD");
+            const questRows = [
+                ["COFFEE CRISIS", this.coffeeQuestCompleted ? "COMPLETE" : this.coffeeQuestAccepted ? "ACTIVE" : "AVAILABLE"],
+                ["LINKED LIST TRAINING", this.questCompleted ? "COMPLETE" : this.coffeeQuestCompleted ? "AVAILABLE" : "LOCKED"],
+                ["NOTEBOOK QUEST", this.notebookQuestCompleted ? "COMPLETE" : this.notebookQuestAccepted ? "ACTIVE" : "LOCKED"],
+                ["TREE TRAINING", this.treeChallengeCompleted ? "COMPLETE" : "AVAILABLE"]
+            ];
+            questRows.forEach(([name, status], i) => {
+                const y = 245 + i * 49;
+                const statusColor = status === "COMPLETE" ? 0x285943 : status === "LOCKED" ? 0x344650 : 0x5b4c2a;
+                add(this.add.rectangle(400, y + 8, 590, 38, 0x263f4b).setStrokeStyle(1, 0x405f6a));
+                add(this.add.circle(125, y + 8, 5, status === "COMPLETE" ? 0x7cffb2 : status === "LOCKED" ? 0x80939b : 0xffd166));
+                label(145, y, name, 11, "#f1f5f9", "bold");
+                add(this.add.text(675, y, status, {
+                    fontSize: "10px", color: status === "COMPLETE" ? "#7cffb2" : status === "LOCKED" ? "#9aaeb7" : "#ffe08a", fontStyle: "bold"
+                }).setOrigin(1, 0));
+            });
+            const completed = Object.values(this.debugQuestCompleted || {}).filter(Boolean).length;
+            label(105, 465, `DEBUG MISSIONS  ·  ${completed}/4 COMPLETE`, 12, "#ffe08a", "bold");
+            button(400, 510, "OPEN DEBUG QUEUE  ›", () => {
+                this.closeInventory();
+                this.showDebugQuestBoard();
+            }, 210);
+        } else if (page === "systems") {
+            card(225, 335, 300, 270, "CIRCULAR QUEUE  ·  TASKS");
+            card(575, 335, 300, 270, "C STACK  ·  HISTORY");
+            const readModuleLines = (module, countName, itemName) => {
+                const out = [];
+                if (!module) return out;
+                try {
+                    const count = module.ccall(countName, "number", [], []);
+                    for (let i = 0; i < count; i++) out.push(`${i + 1}. ${module.ccall(itemName, "string", ["number"], [i])}`);
+                } catch (error) { console.warn("Access Tab could not read a C data-structure module:", error); }
+                return out;
+            };
+            const queueLines = readModuleLines(queueModule, "queueGetCount", "queueGetTaskAt");
+            const historyLines = readModuleLines(stackModule, "stackGetCount", "stackGetActionAt");
+            label(85, 245, (queueLines.length ? queueLines : this.taskQueueFallback || ["No pending tasks."]).join("\n"), 11, "#e8f1f2");
+            label(435, 245, (historyLines.length ? historyLines : this.actionHistoryFallback || ["No actions recorded."]).slice(-7).join("\n"), 11, "#e8f1f2");
+            button(225, 490, "OPEN TASK QUEUE  [Q]", () => {
+                this.closeInventory();
+                this.showIntegrationPanel("queue");
+            }, 190);
+            button(575, 490, "OPEN HISTORY  [H]", () => {
+                this.closeInventory();
+                this.showIntegrationPanel("history");
+            }, 190);
+            label(105, 520, "QUEUE + HISTORY ARE BACKED BY YOUR C DATA-STRUCTURE MODULES.", 9, "#9fb6bf");
+        }
     }
 
     async addInventoryItem(name, description) {
@@ -1323,15 +1950,14 @@ class GameScene extends Phaser.Scene {
                 this.inventoryListText.setText("Your inventory is empty.\n\nUse the buttons below to add items.");
                 return;
             }
-            const lines = ["ITEMS IN THE C HASH TABLE", ""];
+            const lines = [];
             for (let i = 0; i < count; i++) {
                 const name = module.ccall("getItemNameAt", "string", ["number"], [i]);
                 const quantity = module.ccall("getItemQuantityAt", "number", ["number"], [i]);
                 const description = module.ccall("getItemDescriptionAt", "string", ["number"], [i]);
-                const shortDescription = description.length > 56 ? `${description.slice(0, 53)}…` : description;
-                lines.push(`• ${name}  × ${quantity}  —  ${shortDescription}`);
+                lines.push(`• ${name}  × ${quantity}\n  ${description}`);
             }
-            this.inventoryListText.setText(lines.join("\n"));
+            this.inventoryListText.setText(lines.join("\n\n"));
         } catch (error) {
             console.error("Could not read C hash-table inventory:", error);
             this.inventoryListText.setText("Could not read inventory. Check the browser console.");
@@ -1345,10 +1971,15 @@ class GameScene extends Phaser.Scene {
 
     closeInventory() {
         this.inventoryOpen = false;
+        if (this.inventoryPageObjects) {
+            this.inventoryPageObjects.forEach(obj => obj?.destroy?.());
+            this.inventoryPageObjects = [];
+        }
         if (this.inventoryObjects) {
-            this.inventoryObjects.forEach(obj => obj.destroy());
+            this.inventoryObjects.forEach(obj => obj?.destroy?.());
             this.inventoryObjects = [];
         }
+        this.accessTabButtons = null;
         this.inventoryListText = null;
         this.inventoryMessageText = null;
         if (this.inventoryExitKey) {
@@ -1372,29 +2003,26 @@ class GameScene extends Phaser.Scene {
         this.questDialogueObjects = [];
 
         const add = (obj) => {
-            obj.setDepth(60).setScrollFactor(0);
+            obj.setDepth(10020).setScrollFactor(0);
             this.questDialogueObjects.push(obj);
             return obj;
         };
 
-        add(this.add.rectangle(400, 300, 800, 600, 0x081018, 0.78));
-        add(this.add.rectangle(400, 300, 590, 330, 0x182b35, 1)
-            .setStrokeStyle(3, 0x83c5be));
-
-        add(this.add.text(400, 190, title, {
-            fontSize: "25px",
-            color: "#ffffff",
-            fontStyle: "bold",
-            align: "center",
-            wordWrap: { width: 520 }
-        }).setOrigin(0.5));
-
-        add(this.add.text(400, 275, message, {
-            fontSize: "18px",
-            color: "#e8f1f2",
-            align: "center",
-            lineSpacing: 8,
-            wordWrap: { width: 510 }
+        add(this.add.rectangle(400, 300, 800, 600, 0x06111a, 1));
+        add(this.add.rectangle(400, 304, 620, 340, 0x07131c, 0.55));
+        add(this.add.rectangle(400, 300, 610, 330, 0x183541, 1)
+            .setStrokeStyle(3, 0x70d6c2));
+        add(this.add.rectangle(400, 160, 606, 52, 0x234956, 1));
+        add(this.add.circle(123, 160, 13, 0xffd166));
+        add(this.add.circle(123, 160, 6, 0x183541));
+        add(this.add.text(153, 160, title, {
+            fontSize: "19px", color: "#f7fbf8", fontStyle: "bold",
+            letterSpacing: 1, wordWrap: { width: 480 }
+        }).setOrigin(0, 0.5));
+        add(this.add.rectangle(400, 200, 540, 1, 0x42616d));
+        add(this.add.text(400, 286, message, {
+            fontSize: "16px", color: "#dce9eb", align: "center",
+            lineSpacing: 9, wordWrap: { width: 520 }
         }).setOrigin(0.5));
 
         const buttonCount = buttons.length;
@@ -1403,25 +2031,22 @@ class GameScene extends Phaser.Scene {
             buttons.map((_, i) => 170 + i * (460 / (buttonCount - 1)));
 
         buttons.forEach((buttonInfo, index) => {
-            const button = add(this.add.text(positions[index], 390, buttonInfo.label, {
-                fontSize: "17px",
-                color: "#ffffff",
-                backgroundColor: "#285943",
-                padding: { x: 14, y: 11 }
+            const buttonBg = add(this.add.rectangle(positions[index], 414, 176, 38, 0x285943)
+                .setStrokeStyle(1, 0x70d6c2).setInteractive({ useHandCursor: true }));
+            const button = add(this.add.text(positions[index], 414, buttonInfo.label, {
+                fontSize: "13px", color: "#ffffff", fontStyle: "bold", letterSpacing: 1
             }).setOrigin(0.5).setInteractive({ useHandCursor: true }));
 
-            button.on("pointerover", () => {
-                button.setStyle({ backgroundColor: "#397957" });
-            });
-            button.on("pointerout", () => {
-                button.setStyle({ backgroundColor: "#285943" });
-            });
-            button.on("pointerdown", () => {
+            buttonBg.on("pointerover", () => buttonBg.setFillStyle(0x397957));
+            button.on("pointerover", () => buttonBg.setFillStyle(0x397957));
+            buttonBg.on("pointerout", () => buttonBg.setFillStyle(0x285943));
+            button.on("pointerout", () => buttonBg.setFillStyle(0x285943));
+            const chooseDialogueOption = () => {
                 this.closeQuestDialogue();
-                if (typeof buttonInfo.callback === "function") {
-                    buttonInfo.callback();
-                }
-            });
+                if (typeof buttonInfo.callback === "function") buttonInfo.callback();
+            };
+            buttonBg.on("pointerdown", chooseDialogueOption);
+            button.on("pointerdown", chooseDialogueOption);
         });
         this.animatePanel(this.questDialogueObjects);
     }
@@ -1473,7 +2098,7 @@ class GameScene extends Phaser.Scene {
         this.mentorIntroPage = 0;
         this.mentorIntroObjects = [];
         const add = object => {
-            object.setDepth(70).setScrollFactor(0);
+            object.setDepth(10040).setScrollFactor(0);
             this.mentorIntroObjects.push(object);
             return object;
         };
@@ -1803,12 +2428,12 @@ class GameScene extends Phaser.Scene {
         this.coffeeOverlayElements = [];
 
         const add = (obj) => {
-            obj.setDepth(80).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.coffeeOverlayElements.push(obj);
             return obj;
         };
 
-        add(this.add.rectangle(400, 300, 800, 600, 0x07111b, 0.97));
+        add(this.add.rectangle(400, 300, 800, 600, 0x07111b, 1));
         add(this.add.rectangle(400, 300, 700, 520, 0x142733, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 55, "THE COFFEE CRISIS", {
             fontSize: "30px", color: "#ffffff", fontStyle: "bold"
@@ -2011,76 +2636,163 @@ class GameScene extends Phaser.Scene {
         const ms = value => value * 1.15;
         this.physics.world.setBounds(0, 0, 1200, 900);
 
-        // CAMPUS BACKGROUND
-        this.campusBackground = this.add.rectangle(
-            600, 450, 1200, 900,
-            0x3a7d44
-        );
+        // CAMPUS ENVIRONMENT — layered, colourful pixel-RPG-style grounds.
+        this.campusBackground = this.add.rectangle(600, 450, 1200, 900, 0x4f9858).setDepth(-10);
+        const groundDetails = this.add.graphics().setDepth(-9);
+        groundDetails.fillStyle(0x75b968, 0.32);
+        for (let row = 0; row < 19; row++) {
+            for (let col = 0; col < 25; col++) {
+                const gx = 18 + col * 49 + ((row % 2) * 13);
+                const gy = 18 + row * 47;
+                groundDetails.fillRect(gx, gy, 12, 3);
+                if ((row + col) % 3 === 0) groundDetails.fillRect(gx + 17, gy + 9, 4, 4);
+            }
+        }
+        // Main campus paths with darker edging, warm paving and tile seams.
+        this.add.rectangle(600, 480, 1200, 112, 0x8b7653).setDepth(-8);
+        this.add.rectangle(600, 480, 1200, 98, 0xd8bd83).setDepth(-7);
+        this.add.rectangle(750, 480, 112, 900, 0x8b7653).setDepth(-8);
+        this.add.rectangle(750, 480, 98, 900, 0xd8bd83).setDepth(-7);
+        const pathLines = this.add.graphics().setDepth(-6);
+        pathLines.lineStyle(2, 0xb79b68, 0.55);
+        for (let x = 35; x < 1200; x += 62) pathLines.lineBetween(x, 420, x, 540);
+        for (let y = 25; y < 900; y += 62) pathLines.lineBetween(690, y, 810, y);
 
-        // CAMPUS PATHS
-        this.add.rectangle(
-            600, 480, 1200, 123,
-            0xc2a878
-        );
-
-        this.add.rectangle(
-            750, 480, 123, 900,
-            0xc2a878
-        );
+        // Ambient world lighting sits above the ground and paving, but below
+        // buildings, characters and the fixed HUD.
+        this.campusLighting = this.add.rectangle(600, 450, 1200, 900, 0x17243b, 0)
+            .setDepth(-6.5);
+        // Short branch paths connect the buildings to the main walk without
+        // cutting through the garden beds or building entrances.
+        const branchPaths = this.add.graphics().setDepth(-7.5);
+        [[270,330,270,480],[990,330,990,480],[172.5,480,172.5,712.5],
+         [600,480,600,712.5],[1027.5,480,1027.5,735],[600,197,600,480]].forEach(([x1,y1,x2,y2]) => {
+            branchPaths.lineStyle(42, 0x8b7653, 1);
+            branchPaths.lineBetween(x1, y1, x2, y2);
+            branchPaths.lineStyle(34, 0xd8bd83, 1);
+            branchPaths.lineBetween(x1, y1, x2, y2);
+        });
+        // Small grass beds and flower clusters break up the open green areas.
+        [[55,250],[330,270],[520,270],[930,260],[1010,610],[360,700],[560,760],[100,700]].forEach(([x,y], i) => {
+            this.add.ellipse(x, y + 8, 78, 30, 0x347a46, 0.55).setDepth(-5);
+            [0,1,2,3].forEach(j => {
+                this.add.circle(x - 22 + j * 14, y - (j % 2) * 7, 3, [0xf5d77b,0xf2a6a6,0xf4e9c1,0xd9b4f0][(i+j)%4]).setDepth(-4);
+            });
+        });
 
         // PROGRAMMING LAB
-        this.lab = this.add.rectangle(
-            mx(180), my(150), ms(200), ms(108),
-            0x555555
-        );
-
-        this.add.text(
-            mx(105), my(135),
-            "PROGRAMMING LAB",
-            {
-                fontSize: "18px",
-                color: "#ffffff"
-            }
-        );
+        this.lab = createCampusBuilding(this, mx(180), my(150), ms(200), ms(108), {
+            wall: 0x668e9a, roof: 0x294f62, trim: 0x173d50,
+            highlight: 0x9ed8d8, glass: 0x9bd6df, base: 0x3c6570
+        }, 'PROGRAMMING LAB', '15px');
+        this.add.rectangle(mx(180), my(150) + 12, 34, 28, 0x284b59).setStrokeStyle(2, 0xe6d49c).setDepth(9);
+        this.add.text(mx(180), my(150) + 12, '</>', { fontSize: '13px', color: '#f7e6a5', fontStyle: 'bold' }).setOrigin(0.5).setDepth(10);
 
         // HOSTEL
-        this.hostel = this.add.rectangle(
-            mx(660), my(150), ms(166), ms(108),
-            0x8b5a2b
-        );
+        this.hostel = createCampusBuilding(this, mx(660), my(150), ms(166), ms(108), {
+            wall: 0xb77d55, roof: 0x74432f, trim: 0x553326,
+            highlight: 0xf1c58c, glass: 0x9ed3df, base: 0x86543a
+        }, 'HOSTEL', '16px');
+        this.add.rectangle(mx(660), my(150) + 31, 24, 39, 0x70452f).setStrokeStyle(2, 0xf5d39a).setDepth(9);
+        this.add.circle(mx(660) + 7, my(150) + 31, 2, 0xf6d47e).setDepth(10);
+        this.add.rectangle(mx(180), my(150) + 31, 24, 39, 0x244b5a).setStrokeStyle(2, 0xf5d39a).setDepth(9);
+        // Original door interaction markers are deliberately kept at their exact positions.
+        this.hostelDoor = this.add.circle(mx(660), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
+        this.labDoor = this.add.circle(mx(180), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
 
-        this.add.text(
-            mx(615), my(135),
-            "HOSTEL",
-            {
-                fontSize: "18px",
-                color: "#ffffff"
-            }
-        );
+        // LIBRARY, CANTEEN AND CAMPUS SHOP — same collision bodies, richer facades.
+        this.library = createCampusBuilding(this, mx(115), my(475), ms(140), ms(90), {
+            wall: 0x8977b6, roof: 0x514478, trim: 0x342b58,
+            highlight: 0xd8c9ff, glass: 0xb9d9ed, base: 0x62558b
+        }, 'LIBRARY', '15px');
+        this.add.rectangle(mx(115), my(475) + 26, 21, 34, 0x44365f).setStrokeStyle(2, 0xe7d9a9).setDepth(9);
+        this.libraryDoor = this.add.circle(mx(115), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
+        this.canteen = createCampusBuilding(this, mx(400), my(475), ms(140), ms(90), {
+            wall: 0xd38a5c, roof: 0x8a4934, trim: 0x603b2b,
+            highlight: 0xffd5a1, glass: 0xb8e0e1, base: 0x9c5e3e
+        }, 'CANTEEN', '15px');
+        this.add.rectangle(mx(400), my(475) + 26, 21, 34, 0x70432e).setStrokeStyle(2, 0xffdda9).setDepth(9);
+        this.canteenDoor = this.add.circle(mx(400), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
+        this.campusShop = createCampusBuilding(this, mx(685), my(490), ms(140), ms(78), {
+            wall: 0x5d91a5, roof: 0x31566e, trim: 0x203e54,
+            highlight: 0xb6e5ff, glass: 0xa6dce8, base: 0x3d6e82
+        }, 'CAMPUS SHOP', '13px');
+        this.add.rectangle(mx(685), my(490) + 24, 21, 31, 0x28495c).setStrokeStyle(2, 0xd5eff0).setDepth(9);
+        this.shopDoor = this.add.circle(mx(685), my(539), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff).setDepth(11);
 
-        this.hostelDoor = this.add.circle(mx(660), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.labDoor = this.add.circle(mx(180), my(220), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-
-        // Additional campus facilities with their own playable interiors.
-        this.library = this.add.rectangle(mx(115), my(475), ms(140), ms(90), 0x7056a5).setStrokeStyle(3, 0xd8c7ff);
-        this.add.text(mx(76), my(465), "LIBRARY", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
-        this.libraryDoor = this.add.circle(mx(115), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.canteen = this.add.rectangle(mx(400), my(475), ms(140), ms(90), 0xb95e36).setStrokeStyle(3, 0xffd3a8);
-        this.add.text(mx(360), my(465), "CANTEEN", { fontSize: "16px", color: "#ffffff", fontStyle: "bold" });
-        this.canteenDoor = this.add.circle(mx(400), my(530), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.campusShop = this.add.rectangle(mx(685), my(490), ms(140), ms(78), 0x376a87).setStrokeStyle(3, 0xb6e5ff);
-        this.add.text(mx(647), my(471), "CAMPUS SHOP", { fontSize: "14px", color: "#ffffff", fontStyle: "bold" });
-        this.shopDoor = this.add.circle(mx(685), my(539), 10, 0xf2cc60).setStrokeStyle(2, 0xffffff);
-        this.treeGarden = this.add.rectangle(mx(400), my(105), ms(170), ms(70), 0x2c6e49).setStrokeStyle(2, 0x8be0a6);
-        this.add.text(mx(345), my(97), "TREE GARDEN", { fontSize: "15px", color: "#ffffff", fontStyle: "bold" });
-        [315, 350, 455, 490].forEach(x => this.add.circle(mx(x), my(95), 15, 0x174f2b).setStrokeStyle(2, 0x80c783));
-        [[65, 105], [70, 350], [270, 545], [545, 545], [745, 245], [745, 575]].forEach(([x, y]) => {
-            this.add.circle(mx(x), my(y), 18, 0x245b36).setStrokeStyle(2, 0x9acb72);
-            this.add.rectangle(mx(x), my(y + 20), 8, 18, 0x72512e);
+        // Building-specific visual signatures make each destination easy to recognise.
+        // Lab: illuminated status strip and a small rooftop antenna.
+        this.add.rectangle(mx(180), my(105), 72, 7, 0x57cc99).setStrokeStyle(1, 0xd8fff0).setDepth(4);
+        this.add.rectangle(mx(235), my(96), 4, 22, 0x526b76).setDepth(4);
+        this.add.circle(mx(235), my(84), 5, 0x7ce7d0).setDepth(5);
+        // Hostel: warm balcony rail and a small residential sign.
+        this.add.rectangle(mx(660), my(188), 112, 5, 0xe8bb83).setDepth(8);
+        [620,640,660,680,700].forEach(x => this.add.rectangle(mx(x), my(181), 3, 14, 0x70432f).setDepth(8));
+        // Library: book emblem below its signboard.
+        this.add.rectangle(mx(115), my(475), 24, 17, 0xf1dfad).setStrokeStyle(2, 0x514478).setDepth(7);
+        this.add.line(0, 0, mx(115), my(467), mx(115), my(483), 0x514478, 2).setDepth(8);
+        // Canteen: striped awning and outdoor dining tables.
+        for (let i = 0; i < 7; i++) {
+            this.add.rectangle(mx(400 - 54 + i * 18), my(434), 15, 10,
+                i % 2 ? 0xffe0a8 : 0xb85d45).setDepth(8);
+        }
+        [[500,560],[700,560]].forEach(([x,y], index) => {
+            this.add.ellipse(mx(x), my(y + 10), 62, 13, 0x1e3d2a, 0.25).setDepth(0);
+            this.add.rectangle(mx(x), my(y), 52, 8, 0x9b704c).setStrokeStyle(2, 0x5b402d).setDepth(2);
+            this.add.rectangle(mx(x - 22), my(y - 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
+            this.add.rectangle(mx(x + 22), my(y - 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
+            this.add.rectangle(mx(x - 22), my(y + 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
+            this.add.rectangle(mx(x + 22), my(y + 18), 12, 8, 0x6e9b73).setStrokeStyle(1, 0x315b43).setDepth(2);
         });
-        [[285, 410], [535, 410]].forEach(([x, y]) => {
-            this.add.rectangle(mx(x), my(y), 72, 13, 0x8d6748).setStrokeStyle(2, 0x533f32);
-            this.add.rectangle(mx(x), my(y + 12), 60, 6, 0x614832);
+        // Campus shop: a compact striped canopy above the display windows.
+        for (let i = 0; i < 6; i++) {
+            this.add.rectangle(mx(685 - 45 + i * 18), my(447), 15, 9,
+                i % 2 ? 0x9ed9e7 : 0x31566e).setDepth(8);
+        }
+
+        // Tree garden and campus greenery.
+        this.treeGarden = this.add.rectangle(mx(400), my(105), ms(170), ms(70), 0x397b4b)
+            .setStrokeStyle(3, 0x9acb76).setDepth(-3);
+        this.add.text(mx(400), my(105), 'TREE GARDEN', {
+            fontSize: '15px', color: '#f5f5d7', fontStyle: 'bold',
+            backgroundColor: '#245a3c', padding: { x: 8, y: 4 }
+        }).setOrigin(0.5).setDepth(8);
+        [315,350,455,490].forEach(x => addCampusTree(this, mx(x), my(95), 0.82));
+
+        // TREE GARDEN — a clearly bounded recreation zone with a planted edge.
+        this.add.rectangle(mx(400), my(142), ms(150), 5, 0x9acb76).setDepth(-2);
+        this.add.rectangle(mx(400), my(68), ms(150), 5, 0x9acb76).setDepth(-2);
+        // Small flower beds make the garden distinct from the paved campus roads.
+        [[350,145],[390,150],[430,145],[470,150]].forEach(([x,y], index) => {
+            this.add.ellipse(mx(x), my(y), 30, 12, 0x285d3b, 0.7).setDepth(-1);
+            [0,1,2].forEach(j => this.add.circle(mx(x - 8 + j * 8), my(y - 2 - (j % 2) * 3), 3,
+                [0xf6d77a,0xf4a7bd,0xf2e8c8][(index + j) % 3]).setDepth(0));
+        });
+        // A small noticeboard acts as a campus landmark beside the main walk.
+        this.add.rectangle(mx(560), my(260), 48, 42, 0x765137).setStrokeStyle(3, 0x4d3425).setDepth(1);
+        this.add.rectangle(mx(560), my(258), 38, 29, 0xf1dfad).setStrokeStyle(2, 0x9b7748).setDepth(2);
+        this.add.text(mx(560), my(258), "NOTICE\\nBOARD", {
+            fontSize: "8px", color: "#60452f", fontStyle: "bold", align: "center"
+        }).setOrigin(0.5).setDepth(3);
+        [[65,105],[70,350],[270,545],[545,545],[745,245],[745,575],[700,115],[760,355],[720,540],[180,550],[590,540]].forEach(([x,y],i) => addCampusTree(this, mx(x), my(y), i%3===0 ? 1.05 : 0.82));
+        // Benches are placed on open grass clear of roads, doors and buildings.
+        [[350,390],[600,390],[650,570]].forEach(([x,y]) => {
+            this.add.ellipse(mx(x), my(y+10), 82, 16, 0x1e3d2a, 0.22).setDepth(-2);
+            this.add.rectangle(mx(x), my(y), 76, 12, 0x9d704a).setStrokeStyle(2, 0x5b402d).setDepth(1);
+            this.add.rectangle(mx(x), my(y-9), 76, 8, 0xb88b5d).setStrokeStyle(2, 0x5b402d).setDepth(1);
+            this.add.rectangle(mx(x-25), my(y+12), 6, 15, 0x60452f).setDepth(1);
+            this.add.rectangle(mx(x+25), my(y+12), 6, 15, 0x60452f).setDepth(1);
+        });
+        // Decorative lantern posts along the main walk. Their glow becomes
+        // visible during evening and night.
+        this.campusLampGlows = [];
+        [[610,395],[610,565],[870,395],[870,565],[350,395],[1010,395]].forEach(([x,y]) => {
+            this.add.rectangle(mx(x), my(y+10), 5, 28, 0x4c5146).setDepth(1);
+            this.add.rectangle(mx(x), my(y-5), 17, 13, 0xf6d98a).setStrokeStyle(2, 0x6a5b3a).setDepth(2);
+            const glow = this.add.circle(mx(x), my(y-5), 31, 0xffd27a, 0)
+                .setDepth(-5.5);
+            this.campusLampGlows.push(glow);
+            this.add.circle(mx(x), my(y-5), 13, 0xf7df9b, 0.12).setDepth(0);
         });
 
         // PLAYER
@@ -2096,11 +2808,12 @@ class GameScene extends Phaser.Scene {
 
         this.player.body.setCollideWorldBounds(true);
         this.player.body.setSize(22, 20).setOffset(5, 24);
+        this.player.setDepth(this.player.y + 30);
         this.cameras.main.setBounds(0, 0, 1200, 900);
         this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
         // MENTOR NPC
-        this.npc = this.add.sprite(mx(600), my(350), "cv-mentor", "d0f0").setDisplaySize(42, 52);
+        this.npc = this.add.sprite(mx(600), my(400), "cv-mentor", "d0f0").setDisplaySize(42, 52).setDepth(my(400) + 30);
         this.mentorIndicator = this.add.text(this.npc.x, this.npc.y - 42,
             this.mentorIntroSeen ? "?" : "!", {
                 fontSize: "18px", color: "#fff4a3", fontStyle: "bold",
@@ -2109,38 +2822,47 @@ class GameScene extends Phaser.Scene {
         this.tweens.add({ targets: this.mentorIndicator, y: this.mentorIndicator.y - 5,
             alpha: 0.7, duration: 650, yoyo: true, repeat: -1 });
 
-        this.add.text(
-            mx(570), my(375),
-            "MENTOR",
-            {
-                fontSize: "16px",
-                color: "#ffffff"
-            }
-        );
+        this.mentorName = this.add.text(
+            this.npc.x, this.npc.y + 43, "MENTOR",
+            { fontSize: "16px", color: "#ffffff", fontStyle: "bold",
+              stroke: "#173332", strokeThickness: 3 }
+        ).setOrigin(0.5).setDepth(this.npc.y + 60);
 
         // LAB ASSISTANT — backed by the C++ LabAssistant class.
-        this.labAssistant = this.add.sprite(mx(290), my(245), "cv-assistant", "d0f0").setDisplaySize(38, 48);
-        this.add.text(mx(252), my(266), "LAB ASSISTANT", {
-            fontSize: "11px", color: "#ffffff", fontStyle: "bold"
-        });
+        this.labAssistant = this.add.sprite(mx(290), my(245), "cv-assistant", "d0f0").setDisplaySize(38, 48).setDepth(my(245) + 30);
+        this.labAssistantName = this.add.text(this.labAssistant.x, this.labAssistant.y + 38, "LAB ASSISTANT", {
+            fontSize: "11px", color: "#ffffff", fontStyle: "bold",
+            stroke: "#173332", strokeThickness: 3
+        }).setOrigin(0.5).setDepth(this.labAssistant.y + 55);
 
         // FRIEND NPC — introduces the mandatory opening quest.
-        this.friend = this.add.sprite(mx(360), my(400), "cv-friend", "d0f0").setDisplaySize(40, 50);
-        this.add.text(mx(330), my(425), "FRIEND", {
-            fontSize: "14px", color: "#ffffff"
-        });
+        this.friend = this.add.sprite(mx(360), my(400), "cv-friend", "d0f0").setDisplaySize(40, 50).setDepth(my(400) + 30);
+        this.friendName = this.add.text(this.friend.x, this.friend.y + 39, "FRIEND", {
+            fontSize: "14px", color: "#ffffff", fontStyle: "bold",
+            stroke: "#173332", strokeThickness: 3
+        }).setOrigin(0.5).setDepth(this.friend.y + 55);
 
-        // VENDING MACHINE — major interactive object with a real code-repair challenge.
-        this.vendingMachine = this.add.rectangle(mx(735), my(330), 68, 92, 0x273746)
-            .setStrokeStyle(3, 0x57cc99);
-        this.add.rectangle(mx(735), my(317), 44, 32, 0x5dade2);
-        this.add.rectangle(mx(735), my(350), 44, 24, 0x17202a);
-        this.add.text(mx(700), my(380), "VENDING", {
-            fontSize: "14px", color: "#ffffff", fontStyle: "bold"
-        });
-        this.vendingStatus = this.add.text(mx(695), my(395), this.coffeeQuestCompleted ? "ONLINE" : "ERROR", {
-            fontSize: "12px", color: this.coffeeQuestCompleted ? "#7dffb3" : "#ff7777", fontStyle: "bold"
-        });
+        // VENDING MACHINE — outside the Canteen, on the grass beside the
+        // outdoor dining area. Keep the same interactive body reference.
+        const vendingX = 480;
+        const vendingY = 810;
+        this.vendingMachine = this.add.rectangle(vendingX, vendingY, 58, 78, 0x273746)
+            .setStrokeStyle(3, 0x57cc99).setDepth(3);
+        this.add.rectangle(vendingX, vendingY - 17, 39, 24, 0x5dade2)
+            .setStrokeStyle(2, 0x9be7f0).setDepth(4);
+        this.add.rectangle(vendingX, vendingY + 13, 39, 22, 0x17202a)
+            .setStrokeStyle(2, 0x6b8794).setDepth(4);
+        this.add.rectangle(vendingX + 18, vendingY + 13, 5, 5, 0xf2cc60).setDepth(5);
+        this.add.rectangle(vendingX - 18, vendingY + 13, 5, 5, 0x57cc99).setDepth(5);
+        this.add.text(vendingX, vendingY - 48, "CANTEEN CAFÉ", {
+            fontSize: "9px", color: "#fff4d6", fontStyle: "bold",
+            backgroundColor: "#245b49", padding: { x: 4, y: 3 }
+        }).setOrigin(0.5).setDepth(5);
+        this.vendingStatus = this.add.text(vendingX, vendingY + 52,
+            this.coffeeQuestCompleted ? "ONLINE" : "ERROR", {
+                fontSize: "10px", color: this.coffeeQuestCompleted ? "#7dffb3" : "#ff7777",
+                fontStyle: "bold", backgroundColor: "#17202a", padding: { x: 4, y: 2 }
+            }).setOrigin(0.5).setDepth(5);
 
         // LAB PHYSICS
         this.physics.add.existing(this.lab, true);
@@ -2197,24 +2919,25 @@ class GameScene extends Phaser.Scene {
         this.debugQuestExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
         // INTERACTION BACKGROUND
-        this.interactionBox = this.add.rectangle(400, 520, 320, 50, 0x122331)
+        this.interactionBox = this.add.rectangle(400, 520, 390, 54, 0x102633)
             .setStrokeStyle(2, 0x79d7bf);
         this.interactionBox.setAlpha(0.94);
-        this.interactionBox.setDepth(10);
+        this.interactionBox.setDepth(10000);
         this.interactionBox.setScrollFactor(0);
 
         // INTERACTION TEXT
         this.interactionText = this.add.text(
             400, 520, "",
             {
-                fontSize: "17px",
+                fontSize: "15px",
                 color: "#fff4d6",
-                fontStyle: "bold"
+                fontStyle: "bold",
+                letterSpacing: 0.5
             }
         );
 
         this.interactionText.setOrigin(0.5);
-        this.interactionText.setDepth(11);
+        this.interactionText.setDepth(10000);
         this.interactionText.setScrollFactor(0);
 
         this.interactionBox.setVisible(false);
@@ -2222,29 +2945,50 @@ class GameScene extends Phaser.Scene {
 
         // Compact RPG-style HUD panels keep quest and player status readable
         // without covering the center of the campus.
-        this.hudPanels = this.add.graphics().setDepth(4);
+        
+        this.hudPanels = this.add.graphics().setDepth(10000);
         this.hudPanels.setScrollFactor(0);
-        this.hudPanels.fillStyle(0x112333, 0.94);
-        this.hudPanels.fillRoundedRect(8, 8, 320, 246, 14);
-        this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
-        this.hudPanels.strokeRoundedRect(8, 8, 320, 246, 14);
-        this.hudPanels.fillStyle(0x112333, 0.94);
+        this.hudPanels.fillStyle(0x07131c, 0.45);
+        this.hudPanels.fillRoundedRect(11, 12, 280, 238, 14);
+        this.hudPanels.fillStyle(0x102633, 1);
+        this.hudPanels.fillRoundedRect(8, 8, 280, 238, 14);
+        this.hudPanels.lineStyle(2, 0x5cc7b2, 0.98);
+        this.hudPanels.strokeRoundedRect(8, 8, 280, 238, 14);
+        this.hudPanels.fillStyle(0x5cc7b2, 1);
+        this.hudPanels.fillRoundedRect(19, 16, 3, 8, 1);
+        this.hudPanels.lineStyle(1, 0x426174, 0.8);
+        this.hudPanels.lineBetween(20, 29, 276, 29);
+        this.hudPanels.lineBetween(20, 105, 276, 105);
+        this.hudPanels.lineBetween(20, 176, 276, 176);
+        this.hudPanels.fillStyle(0x07131c, 0.45);
+        this.hudPanels.fillRoundedRect(503, 12, 292, 110, 14);
+        this.hudPanels.fillStyle(0x102633, 1);
         this.hudPanels.fillRoundedRect(500, 8, 292, 110, 14);
         this.hudPanels.lineStyle(2, 0x5cc7b2, 0.95);
         this.hudPanels.strokeRoundedRect(500, 8, 292, 110, 14);
+        this.hudPanels.lineStyle(1, 0x426174, 0.8);
+        this.hudPanels.lineBetween(515, 59, 777, 59);
 
         // QUEST STATUS HUD
+
+this.add.text(22, 17, "ACTIVE QUEST", {
+    fontSize: "10px",
+    color: "#8da9bb",
+    fontStyle: "bold",
+    letterSpacing: 2
+}).setDepth(10000).setScrollFactor(0);
+
         this.questStatusText = this.add.text(
-            22, 20,
+            22, 37,
             "STORY QUEST · COFFEE CRISIS",
             {
                 fontSize: "14px",
-                color: "#9cebd3",
+                color: "#ffd166",
                 fontStyle: "bold"
             }
         );
 
-        this.questStatusText.setDepth(5);
+        this.questStatusText.setDepth(10000);
         this.questStatusText.setScrollFactor(0);
 
         // XP HUD
@@ -2258,56 +3002,63 @@ class GameScene extends Phaser.Scene {
             }
         );
 
-        this.xpText.setDepth(5);
+        this.xpText.setDepth(10000);
         this.xpText.setScrollFactor(0);
 
         this.notebookQuestStatusText = this.add.text(
-            22, 88,
-            "Quest: Notebook — LOCKED",
+            22, 91,
+            "NOTEBOOK  ·  LOCKED",
             {
                 fontSize: "13px",
                 color: "#e7eff6"
             }
         );
-        this.notebookQuestStatusText.setDepth(5);
+        this.notebookQuestStatusText.setDepth(10000);
         this.notebookQuestStatusText.setScrollFactor(0);
 
-        this.inventoryHintText = this.add.text(22, 120, "ACCESS TAB  ·  I", {
-            fontSize: "12px", color: "#c6d5e1"
+        this.inventoryHintText = this.add.text(22, 119, "PERSONAL ACCESS  ·  I", {
+            fontSize: "10px", color: "#b8d8e2", fontStyle: "bold", letterSpacing: 1
         });
-        this.accessTabButton = this.add.rectangle(83, 132, 144, 28, 0x245b49)
-            .setStrokeStyle(1, 0x7cffb2).setDepth(4.5).setScrollFactor(0)
+        this.accessTabButton = this.add.rectangle(91, 148, 162, 32, 0x245b49)
+            .setStrokeStyle(1, 0x7cffb2).setDepth(10000).setScrollFactor(0)
             .setInteractive({ useHandCursor: true });
+        this.accessTabButton.on("pointerover", () => this.accessTabButton.setFillStyle(0x34775e));
+        this.accessTabButton.on("pointerout", () => this.accessTabButton.setFillStyle(0x245b49));
         this.accessTabButton.on("pointerdown", () => this.showInventory());
-        this.inventoryHintText.setDepth(5);
+        this.accessTabButtonText = this.add.text(91, 148, "OPEN ACCESS TAB  ›", {
+            fontSize: "10px", color: "#f4fbf8", fontStyle: "bold", letterSpacing: 1
+        }).setOrigin(0.5).setDepth(10000).setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+        this.accessTabButtonText.on("pointerdown", () => this.showInventory());
+        this.inventoryHintText.setDepth(10000);
         this.inventoryHintText.setScrollFactor(0);
         this.inventoryHintText.setInteractive({ useHandCursor: true })
             .on("pointerdown", () => this.showInventory());
         this.inventoryHintText.on("pointerover", () => this.inventoryHintText.setColor("#7cffb2"));
         this.inventoryHintText.on("pointerout", () => this.inventoryHintText.setColor("#c6d5e1"));
 
-        this.treeHintText = this.add.text(22, 183, "T  ·  TREE TRAINING", {
-            fontSize: "12px", color: "#9cebd3"
+        this.treeHintText = this.add.text(22, 190, "T  ·  TREE TRAINING", {
+            fontSize: "11px", color: "#9cebd3", fontStyle: "bold"
         });
-        this.treeHintText.setDepth(5);
+        this.treeHintText.setDepth(10000);
         this.treeHintText.setScrollFactor(0);
 
-        this.integrationHintText = this.add.text(22, 215, "H History   Q Tasks   B Quests", {
-            fontSize: "11px", color: "#c6d5e1"
+        this.integrationHintText = this.add.text(22, 222, "H HISTORY   Q TASKS   B QUESTS", {
+            fontSize: "10px", color: "#c6d5e1", fontStyle: "bold"
         });
-        this.integrationHintText.setDepth(5);
+        this.integrationHintText.setDepth(10000);
         this.integrationHintText.setScrollFactor(0);
         this.historyKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
         this.taskQueueKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
         this.integrationExitKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
-        // Continuous campus clock: one game minute per two real seconds.
+        // Continuous campus clock: one game minute per one real second.
         this.gameMinutes = Phaser.Math.Clamp(Number(gameState.gameMinutes ?? 360), 0, 1439);
         this.gameDay = Math.max(1, Number(gameState.gameDay) || 1);
-        this.gameClockText = this.add.text(515, 78, formatGameClock(), {
+        this.gameClockText = this.add.text(515, 91, formatGameClock(), {
             fontSize: "14px", color: "#fff4d6", fontStyle: "bold"
         });
-        this.gameClockText.setDepth(5);
+        this.gameClockText.setDepth(10000);
         this.gameClockText.setScrollFactor(0);
         this.gameClockListener = (timeText) => {
             this.gameMinutes = gameState.gameMinutes;
@@ -2318,19 +3069,56 @@ class GameScene extends Phaser.Scene {
         gameClockListeners.add(this.gameClockListener);
         startGameClock();
 
-        this.coffeeQuestStatusText = this.add.text(22, 151, "Next · Talk to your friend", {
-            fontSize: "12px", color: "#e7eff6"
-        });
-        this.coffeeQuestStatusText.setDepth(5);
-        this.coffeeQuestStatusText.setScrollFactor(0);
+        // Temporary lighting preview keys. F4 returns to the live in-game clock.
+        this.lightingPreviewMode = null;
+        this.lightingPreviewKeys = {
+            day: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+            evening: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+            night: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
+            live: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR)
+        };
+        this.lightingPreviewHint = this.add.text(700, 214, "1 DAY · 2 EVE · 3 NIGHT · 4 AUTO", {
+            fontSize: "8px", color: "#9cebd3", fontStyle: "bold"
+        }).setOrigin(0.5).setDepth(10002).setScrollFactor(0);
+        this.updateWorldLighting();
+
+       this.coffeeQuestStatusText = this.add.text(22, 66, "Next · Talk to your friend", {
+    fontSize: "12px",
+    color: "#e7eff6",
+    wordWrap: { width: 245 }
+});
+this.coffeeQuestStatusText.setDepth(10000);
+this.coffeeQuestStatusText.setScrollFactor(0);
 
         this.playerStatsText = this.add.text(515, 20, "PLAYER  ·  Loading…", {
             fontSize: "13px",
             color: "#e7eff6",
             lineSpacing: 5
         });
-        this.playerStatsText.setDepth(5);
+        this.playerStatsText.setDepth(10000);
         this.playerStatsText.setScrollFactor(0);
+
+// ENERGY BAR HUD
+this.energyLabelText = this.add.text(515, 43, "ENERGY  100/100", {
+    fontSize: "11px",
+    color: "#b8c7d9",
+    fontStyle: "bold"
+}).setDepth(10000).setScrollFactor(0);
+
+this.energyBarBackground = this.add.graphics()
+    .setDepth(10000)
+    .setScrollFactor(0);
+
+this.energyBarBackground.fillStyle(0x263746, 1);
+this.energyBarBackground.fillRoundedRect(515, 67, 250, 10, 5);
+
+this.energyBarFill = this.add.graphics()
+    .setDepth(10000)
+    .setScrollFactor(0);
+
+this.energyBarFill.fillStyle(0x57cc99, 1);
+this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
+
         cppPlayerReady.then((module) => {
             if (module) this.syncPlayerStats();
             else if (this.playerStatsText) this.playerStatsText.setText("C++ Player module unavailable");
@@ -2364,13 +3152,13 @@ class GameScene extends Phaser.Scene {
     }
 
     createMiniMap() {
-        this.minimapPanel = this.add.rectangle(700, 199, 184, 136, 0x112333, 0.96)
-            .setStrokeStyle(2, 0x5cc7b2).setDepth(6).setScrollFactor(0);
-        this.minimapLabel = this.add.text(618, 134, "CAMPUS MAP", {
-            fontSize: "11px", color: "#9cebd3", fontStyle: "bold"
-        }).setDepth(7).setScrollFactor(0);
-        this.minimapGraphic = this.add.graphics().setDepth(7).setScrollFactor(0);
-        this.minimapLayout = { x: 618, y: 151, width: 164, height: 96 };
+        this.minimapPanel = this.add.rectangle(700, 174, 176, 104, 0x102633, 0.98)
+            .setStrokeStyle(2, 0x5cc7b2).setDepth(10000).setScrollFactor(0);
+        this.minimapLabel = this.add.text(622, 132, "CAMPUS MAP  ·  LIVE", {
+            fontSize: "9px", color: "#9cebd3", fontStyle: "bold", letterSpacing: 1
+        }).setDepth(10000).setScrollFactor(0);
+        this.minimapGraphic = this.add.graphics().setDepth(10000).setScrollFactor(0);
+        this.minimapLayout = { x: 622, y: 147, width: 156, height: 54 };
         this.updateMiniMap();
     }
 
@@ -2395,6 +3183,8 @@ class GameScene extends Phaser.Scene {
             const p = point(worldX, worldY);
             g.fillStyle(color, 1).fillRoundedRect(p.x - 4, p.y - 3, 8, 6, 2);
         });
+        const vendingPoint = point(480, 810);
+        g.fillStyle(0x57cc99, 1).fillRect(vendingPoint.x - 2, vendingPoint.y - 3, 4, 6);
         const playerPoint = point(this.player.x, this.player.y);
         g.fillStyle(0xffd166, 1).fillCircle(playerPoint.x, playerPoint.y, 4);
         g.lineStyle(1, 0xffffff, 1).strokeCircle(playerPoint.x, playerPoint.y, 4);
@@ -2448,22 +3238,63 @@ class GameScene extends Phaser.Scene {
 
 
     // ==========================================
-    // CONTINUOUS GAME CLOCK — 1 MINUTE / 2 REAL SECONDS
+    // CAMPUS LIGHTING — DAY / EVENING / NIGHT
     // ==========================================
-    advanceGameMinute() {
-        this.gameMinutes++;
-        if (this.gameMinutes >= 1440) {
-            this.gameMinutes = 0;
-            this.gameDay++;
+    updateWorldLighting() {
+        const minutes = Phaser.Math.Clamp(Number(gameState.gameMinutes) || 0, 0, 1439);
+        const hour = Math.floor(minutes / 60);
+        const preview = this.lightingPreviewMode;
+        const effectiveHour = preview === "day" ? 12
+            : preview === "evening" ? 18
+            : preview === "night" ? 22 : hour;
+        let ground = 0x4f9858;
+        let tint = 0x17243b;
+        let tintAlpha = 0;
+        let lampAlpha = 0;
+
+        if (effectiveHour >= 5 && effectiveHour < 7) {
+            // Sunrise: a soft, warm morning tint.
+            ground = 0x6b9860;
+            tint = 0xf0b875;
+            tintAlpha = 0.10;
+        } else if (effectiveHour >= 7 && effectiveHour < 17) {
+            // Bright daytime.
+            ground = 0x4f9858;
+        } else if (effectiveHour >= 17 && effectiveHour < 20) {
+            // Evening: warmer grass and amber lanterns.
+            ground = 0x77704d;
+            tint = 0xe58b55;
+            tintAlpha = 0.20;
+            lampAlpha = 0.18;
+        } else {
+            // Night: cool blue ambient light and illuminated campus lamps.
+            ground = 0x344b55;
+            tint = 0x101d3c;
+            tintAlpha = 0.43;
+            lampAlpha = 0.52;
         }
+
+        if (this.campusBackground) this.campusBackground.setFillStyle(ground);
+        if (this.campusLighting) this.campusLighting.setFillStyle(tint, tintAlpha);
+        if (this.campusLampGlows) {
+            this.campusLampGlows.forEach(glow => {
+                if (glow?.active) glow.setAlpha(lampAlpha);
+            });
+        }
+        this.campusTimePeriod = effectiveHour >= 17 && effectiveHour < 20
+            ? "EVENING"
+            : (effectiveHour >= 20 || effectiveHour < 5 ? "NIGHT" : "DAY");
+    }
+
+    // Kept as a single-minute helper for any future in-game time actions.
+    advanceGameMinute() {
+        this.gameMinutes = (Number(gameState.gameMinutes) + 1) % 1440;
+        if (this.gameMinutes === 0) this.gameDay = Math.max(1, Number(gameState.gameDay) || 1) + 1;
         gameState.gameMinutes = this.gameMinutes;
         gameState.gameDay = this.gameDay;
-        this.gameClockText.setText(formatGameClock());
-        let ground = 0x3a7d44;
-        if (hour >= 12 && hour < 17) ground = 0x4d8b49;
-        else if (hour >= 17 && hour < 20) ground = 0x6b6847;
-        else if (hour >= 20 || hour < 6) ground = 0x202c48;
-        if (this.campusBackground) this.campusBackground.setFillStyle(ground);
+        this.gameClockText?.setText(formatGameClock());
+        this.updateWorldLighting();
+        persistGameState();
     }
 
     // ==========================================
@@ -2504,10 +3335,37 @@ class GameScene extends Phaser.Scene {
         });
     }
 
+hideCampusForDebug() {
+    if (this.debugHiddenObjects) return;
+
+    this.debugHiddenObjects = this.children.list.map(obj => ({
+        obj,
+        visible: obj.visible
+    }));
+
+    this.debugHiddenObjects.forEach(item => {
+        item.obj.setVisible(false);
+    }); 
+}
+
+restoreCampusAfterDebug() {
+    if (!this.debugHiddenObjects) return;
+
+    this.debugHiddenObjects.forEach(item => {
+        if (item.obj && item.obj.active) {
+            item.obj.setVisible(item.visible);
+        }
+    });
+
+    this.debugHiddenObjects = null;
+}
+
+
     showDebugQuestBoard(force = false) {
         if ((!force && (this.debugQuestOpen || this.treeChallengeOpen || this.dsaOpen ||
             this.inventoryOpen || this.questDialogueOpen || this.coffeeChallengeOpen)) || this.mentorIntroOpen) return;
         const firstOpen = !this.debugQuestOpen;
+        if (firstOpen) this.hideCampusForDebug();
         this.cleanupDebugQuestInput();
         this.debugQuestOpen = true;
         this.debugCodeChallengeOpen = false;
@@ -2515,12 +3373,13 @@ class GameScene extends Phaser.Scene {
         if (firstOpen) this.recordGameAction("Opened access tab debugging queue");
         this.debugQuestObjects?.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
+        
         const add = obj => {
-            obj.setDepth(120).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
-        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.88));
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 1));
         add(this.add.rectangle(400, 300, 690, 520, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 68, "DEBUGGING QUEST QUEUE", {
             fontSize: "25px", color: "#7CFFB2", fontStyle: "bold"
@@ -2562,13 +3421,13 @@ class GameScene extends Phaser.Scene {
         this.debugQuestObjects.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
         const add = obj => {
-            obj.setDepth(125).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
         const active = gameState.activeDebugQuestId === quest.id;
         const anotherMissionActive = !!gameState.activeDebugQuestId && !active;
-        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.90));
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 1));
         add(this.add.rectangle(400, 300, 660, 460, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 100, quest.title, {
             fontSize: "25px", color: "#7CFFB2", fontStyle: "bold", align: "center", wordWrap: { width: 580 }
@@ -2616,11 +3475,11 @@ class GameScene extends Phaser.Scene {
         this.debugCodeChallengeOpen = true;
         this.currentDebugQuest = quest;
         const add = obj => {
-            obj.setDepth(125).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
-        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.97));
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 1));
         add(this.add.rectangle(400, 300, 730, 530, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 58, quest.title, {
             fontSize: "23px", color: "#7CFFB2", fontStyle: "bold", align: "center", wordWrap: { width: 650 }
@@ -2756,7 +3615,9 @@ class GameScene extends Phaser.Scene {
         this.debugCodeChallengeOpen = false;
         this.debugQuestObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
         this.debugQuestObjects = [];
-    }
+        this.restoreCampusAfterDebug();
+    } 
+    
 
     // ==========================================
     // BINARY SEARCH TREE TRAINING (PRESS T)
@@ -2770,14 +3631,14 @@ class GameScene extends Phaser.Scene {
         this.player.body.setVelocity(0);
         this.treeChallengeObjects = [];
 
-        const add = (obj) => { obj.setScrollFactor(0); this.treeChallengeObjects.push(obj); return obj; };
-        add(this.add.rectangle(400, 300, 720, 520, 0x101820, 0.97).setStrokeStyle(3, 0x57cc99).setDepth(100));
+        const add = (obj) => { obj.setDepth(10060).setScrollFactor(0); this.treeChallengeObjects.push(obj); return obj; };
+        add(this.add.rectangle(400, 300, 720, 520, 0x101820, 0.97).setStrokeStyle(3, 0x57cc99).setDepth(10060));
         add(this.add.text(400, 65, "TREE TRAINING — BINARY SEARCH TREE", {
             fontSize: "24px", color: "#7CFFB2", fontStyle: "bold", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
         add(this.add.text(400, 100, "Insert 40, 20, 60, 10, 30 into a BST", {
             fontSize: "18px", color: "#ffffff", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
 
         // Build the actual C tree when its Emscripten module is available.
         const module = await treeReady;
@@ -2789,7 +3650,7 @@ class GameScene extends Phaser.Scene {
         }
 
         // Draw the teaching tree in Phaser. Values mirror the C insert sequence.
-        const line = (x1, y1, x2, y2) => add(this.add.line(0, 0, x1, y1, x2, y2, 0x7CFFB2).setLineWidth(3).setDepth(101));
+        const line = (x1, y1, x2, y2) => add(this.add.line(0, 0, x1, y1, x2, y2, 0x7CFFB2).setLineWidth(3).setDepth(10060));
         line(400, 170, 280, 230); line(400, 170, 520, 230); line(280, 230, 220, 290); line(280, 230, 335, 290);
         const node = (x, y, label) => {
             add(this.add.circle(x, y, 25, 0x245b49).setStrokeStyle(3, 0x7CFFB2).setDepth(102));
@@ -2798,12 +3659,12 @@ class GameScene extends Phaser.Scene {
         node(400, 170, 40); node(280, 230, 20); node(520, 230, 60); node(220, 290, 10); node(335, 290, 30);
         add(this.add.text(400, 335, "Question: What is the INORDER traversal?", {
             fontSize: "20px", color: "#ffffff", fontStyle: "bold", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
 
         const options = ["10, 20, 30, 40, 60", "40, 20, 10, 30, 60", "10, 30, 20, 60, 40"];
         options.forEach((answer, index) => {
             const y = 385 + index * 48;
-            const button = add(this.add.rectangle(400, y, 440, 38, 0x263746).setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }).setDepth(101));
+            const button = add(this.add.rectangle(400, y, 440, 38, 0x263746).setStrokeStyle(1, 0x7CFFB2).setInteractive({ useHandCursor: true }).setDepth(10060));
             const label = add(this.add.text(400, y, `${String.fromCharCode(65 + index)}) ${answer}`, {
                 fontSize: "17px", color: "#ffffff", align: "center"
             }).setOrigin(0.5).setDepth(102));
@@ -2811,7 +3672,7 @@ class GameScene extends Phaser.Scene {
         });
         add(this.add.text(400, 535, "Press ESC to close  •  Correct answer earns +20 XP", {
             fontSize: "15px", color: "#b8c7d9", align: "center"
-        }).setOrigin(0.5).setDepth(101));
+        }).setOrigin(0.5).setDepth(10060));
     }
 
     async answerTreeChallenge(correct, button, label) {
@@ -2867,6 +3728,23 @@ class GameScene extends Phaser.Scene {
     // ==========================================
 
     update() {
+
+        if (this.lightingPreviewKeys) {
+            let previewChanged = false;
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.day)) {
+                this.lightingPreviewMode = "day"; previewChanged = true;
+            }
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.evening)) {
+                this.lightingPreviewMode = "evening"; previewChanged = true;
+            }
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.night)) {
+                this.lightingPreviewMode = "night"; previewChanged = true;
+            }
+            if (Phaser.Input.Keyboard.JustDown(this.lightingPreviewKeys.live)) {
+                this.lightingPreviewMode = null; previewChanged = true;
+            }
+            if (previewChanged) this.updateWorldLighting();
+        }
 
         if (this.minimapPanel?.visible && !this.interiorActive) this.updateMiniMap();
         if (this.interiorActive) {
@@ -3023,6 +3901,7 @@ class GameScene extends Phaser.Scene {
         // NORMALIZE DIAGONAL MOVEMENT
         this.player.body.velocity.normalize().scale(speed);
         updatePlayerAnimation(this.player, this.player.body.velocity.x, this.player.body.velocity.y);
+        this.player.setDepth(this.player.y + 30);
 
         // Find the closest interactable character/object.
         const targets = [
@@ -3173,10 +4052,10 @@ class InteriorScene extends Phaser.Scene {
         // Keep a visible, direct way back in every room. This avoids trapping
         // the player if they miss the door marker or load beside furniture.
         this.returnButton = this.add.rectangle(680, 112, 184, 38, 0x245b49)
-            .setStrokeStyle(2, 0x9be7b0).setInteractive({ useHandCursor: true }).setDepth(10);
+            .setStrokeStyle(2, 0x9be7b0).setInteractive({ useHandCursor: true }).setDepth(10000);
         this.returnButtonLabel = this.add.text(680, 112, "← RETURN TO CAMPUS", {
             fontSize: "12px", color: "#ffffff", fontStyle: "bold"
-        }).setOrigin(0.5).setDepth(11);
+        }).setOrigin(0.5).setDepth(10000);
         this.returnButton.on("pointerdown", () => this.returnToCampus());
         this.returnButtonLabel.setInteractive({ useHandCursor: true })
             .on("pointerdown", () => this.returnToCampus());
@@ -3251,6 +4130,29 @@ class InteriorScene extends Phaser.Scene {
             this.addSolid(390, 325, 70, 52, 0x574238, "CHAIR");
             this.addTarget(205, 275, "Bed: sleep until 6:00 AM", "sleep", 0xf2cc60);
             this.addTarget(530, 215, "Study computer: read a booklet", "booklet", 0x53a8d6);
+            // FIRST-DAY FRIEND INTRODUCTION
+if (!gameState.friendIntroSeen) {
+    this.hostelFriend = this.add.sprite(
+        370, 380, "cv-friend", "d0f0"
+    ).setDisplaySize(40, 50).setDepth(430);
+
+    this.hostelFriendName = this.add.text(
+        370, 418, "NEIGHBOUR", {
+            fontSize: "12px",
+            color: "#ffffff",
+            fontStyle: "bold",
+            stroke: "#173332",
+            strokeThickness: 3
+        }
+    ).setOrigin(0.5);
+
+    this.addTarget(
+        370, 380,
+        "Meet your neighbour",
+        "friendIntro",
+        0xb77be0
+    );
+}
         } else if (this.location === "lab") {
             this.addSolid(400, 110, 360, 48, 0xf4f1de, "PROGRAMMING LAB — DEBUG, BUILD, LEARN");
             this.add.text(400, 110, "C  |  C++  |  DATA STRUCTURES", { fontSize: "15px", color: "#234", fontStyle: "bold" }).setOrigin(0.5);
@@ -3322,7 +4224,7 @@ class InteriorScene extends Phaser.Scene {
     showPanel(title, body) {
         this.closePanel();
         this.panelOpen = true;
-        const add = object => { object.setDepth(100); this.panelObjects.push(object); return object; };
+        const add = object => { object.setDepth(10070).setScrollFactor(0); this.panelObjects.push(object); return object; };
         add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.92));
         add(this.add.rectangle(400, 300, 650, 465, 0x182b35).setStrokeStyle(3, 0x7cffb2));
         add(this.add.text(400, 105, title, { fontSize: "25px", color: "#7cffb2", fontStyle: "bold", align: "center" }).setOrigin(0.5));
@@ -3472,7 +4374,22 @@ class InteriorScene extends Phaser.Scene {
         if (target.action === "exit") {
             this.returnToCampus();
             return;
-        }
+        } 
+if (target.action === "friendIntro") {
+    this.showPanel(
+        "YOUR NEW NEIGHBOUR",
+        "Hey! You're finally here! I live in the next room. Looks like we're neighbours!\n\nI'm still getting used to this place too. If you need anything, just come find me.\n\nBy the way, welcome to Cipher Valley!"
+    );
+
+    gameState.friendIntroSeen = true;
+    this.saveInteriorProgress();
+
+    this.hostelFriend?.destroy();
+    this.hostelFriendName?.destroy();
+
+    return;
+}
+
         if (target.action === "sleep") {
             const current = Number(gameState.gameMinutes) || 0;
             const minutesUntilSix = current < 360 ? 360 - current : 1440 - current + 360;
@@ -3522,6 +4439,14 @@ class InteriorScene extends Phaser.Scene {
             persistGameState();
         }
         this.scene.stop("InteriorScene");
+                // Automatically introduce the mentor on the first hostel exit.
+        if (this.location === "hostel" && campus && !gameState.mentorIntroSeen) {
+            campus.time.delayedCall(200, () => {
+                if (!gameState.mentorIntroSeen) {
+                    campus.showMentorIntroduction();
+                }
+            });
+        }
     }
 
     update() {
@@ -3578,13 +4503,13 @@ const config = {
 
     },
 
-    scene: [GameScene, InteriorScene]
+    scene: [BootScene, PrologueScene, GameScene, InteriorScene]
 
 };
 
 
 // ==========================================
 // START GAME
-// ==========================================
+// ==========================================+
 
 const game = new Phaser.Game(config);
