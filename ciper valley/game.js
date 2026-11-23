@@ -37,6 +37,7 @@ function loadGameState() {
         labPracticeCompleted: {},
         debugQuestCompleted: {},
         mentorIntroSeen: false,
+        friendIntroSeen: false,
         activeDebugQuestId: null,
         inventory: {},
         actionHistory: [],
@@ -704,8 +705,11 @@ class PrologueScene extends Phaser.Scene {
         displayNextLine();
     }
 
-    showValleyReveal() {
-        this.cameras.main.setBackgroundColor("#82b9d1");
+   showValleyReveal() {
+    // Clear the previous system-initialization screen.
+    this.children.removeAll();
+
+    this.cameras.main.setBackgroundColor("#82b9d1");
 
         const sky = this.add.graphics();
 
@@ -923,12 +927,62 @@ class GameScene extends Phaser.Scene {
         this.integrationPanelOpen = false;
         this.integrationPanelObjects = [];
         this.labAssistant = null;
+
+        
+        
+    }
+
+     // ==========================================
+    // PROTOTYPE ENDING SCREEN
+    // ==========================================
+
+    showPrototypeEnding() {
+        this.prototypeEndingOpen = true;
+        this.prototypeEndingObjects = [];
+
+        const add = obj => {
+            obj.setScrollFactor(0);
+            this.prototypeEndingObjects.push(obj);
+            return obj;
+        };
+
+        add(this.add.rectangle(
+            400, 300, 800, 600, 0x101c2b, 0.96
+        ));
+
+        add(this.add.text(400, 145, "CIPHER VALLEY", {
+            fontSize: "38px",
+            color: "#f5d78e",
+            fontStyle: "bold"
+        }).setOrigin(0.5));
+
+        add(this.add.text(400, 205, "PROTOTYPE COMPLETE", {
+            fontSize: "23px",
+            color: "#7cffb2"
+        }).setOrigin(0.5));
+
+        add(this.add.text(
+            400, 300,
+            "Your journey through Cipher Valley has just begun.\n\nYou've explored the campus, solved challenges,\nand taken your first steps into programming.",
+            {
+                fontSize: "19px",
+                color: "#ffffff",
+                align: "center",
+                lineSpacing: 10
+            }
+        ).setOrigin(0.5));
+
+        add(this.add.text(
+            400, 455,
+            "THANK YOU FOR PLAYING THE PROTOTYPE", {
+                fontSize: "16px",
+                color: "#f5d78e"
+            }
+        ).setOrigin(0.5));
     }
 
 
-    // ==========================================
-    // DSA CHALLENGE
-    // ==========================================
+    
 
     showDSAChallenge() {
 
@@ -2374,12 +2428,12 @@ if (this.energyBarFill) {
         this.coffeeOverlayElements = [];
 
         const add = (obj) => {
-            obj.setDepth(80).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.coffeeOverlayElements.push(obj);
             return obj;
         };
 
-        add(this.add.rectangle(400, 300, 800, 600, 0x07111b, 0.97));
+        add(this.add.rectangle(400, 300, 800, 600, 0x07111b, 1));
         add(this.add.rectangle(400, 300, 700, 520, 0x142733, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 55, "THE COFFEE CRISIS", {
             fontSize: "30px", color: "#ffffff", fontStyle: "bold"
@@ -3281,10 +3335,37 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         });
     }
 
+hideCampusForDebug() {
+    if (this.debugHiddenObjects) return;
+
+    this.debugHiddenObjects = this.children.list.map(obj => ({
+        obj,
+        visible: obj.visible
+    }));
+
+    this.debugHiddenObjects.forEach(item => {
+        item.obj.setVisible(false);
+    }); 
+}
+
+restoreCampusAfterDebug() {
+    if (!this.debugHiddenObjects) return;
+
+    this.debugHiddenObjects.forEach(item => {
+        if (item.obj && item.obj.active) {
+            item.obj.setVisible(item.visible);
+        }
+    });
+
+    this.debugHiddenObjects = null;
+}
+
+
     showDebugQuestBoard(force = false) {
         if ((!force && (this.debugQuestOpen || this.treeChallengeOpen || this.dsaOpen ||
             this.inventoryOpen || this.questDialogueOpen || this.coffeeChallengeOpen)) || this.mentorIntroOpen) return;
         const firstOpen = !this.debugQuestOpen;
+        if (firstOpen) this.hideCampusForDebug();
         this.cleanupDebugQuestInput();
         this.debugQuestOpen = true;
         this.debugCodeChallengeOpen = false;
@@ -3292,8 +3373,9 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         if (firstOpen) this.recordGameAction("Opened access tab debugging queue");
         this.debugQuestObjects?.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
+        
         const add = obj => {
-            obj.setDepth(10050).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
@@ -3339,13 +3421,13 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         this.debugQuestObjects.forEach(obj => obj?.destroy?.());
         this.debugQuestObjects = [];
         const add = obj => {
-            obj.setDepth(10051).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
         const active = gameState.activeDebugQuestId === quest.id;
         const anotherMissionActive = !!gameState.activeDebugQuestId && !active;
-        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.90));
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 1));
         add(this.add.rectangle(400, 300, 660, 460, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 100, quest.title, {
             fontSize: "25px", color: "#7CFFB2", fontStyle: "bold", align: "center", wordWrap: { width: 580 }
@@ -3393,11 +3475,11 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         this.debugCodeChallengeOpen = true;
         this.currentDebugQuest = quest;
         const add = obj => {
-            obj.setDepth(10051).setScrollFactor(0);
+            obj.setDepth(20000).setScrollFactor(0);
             this.debugQuestObjects.push(obj);
             return obj;
         };
-        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 0.97));
+        add(this.add.rectangle(400, 300, 800, 600, 0x071019, 1));
         add(this.add.rectangle(400, 300, 730, 530, 0x152b35, 1).setStrokeStyle(3, 0x57cc99));
         add(this.add.text(400, 58, quest.title, {
             fontSize: "23px", color: "#7CFFB2", fontStyle: "bold", align: "center", wordWrap: { width: 650 }
@@ -3533,7 +3615,9 @@ this.energyBarFill.fillRoundedRect(515, 67, 250, 10, 5);
         this.debugCodeChallengeOpen = false;
         this.debugQuestObjects.forEach(obj => { if (obj && obj.destroy) obj.destroy(); });
         this.debugQuestObjects = [];
-    }
+        this.restoreCampusAfterDebug();
+    } 
+    
 
     // ==========================================
     // BINARY SEARCH TREE TRAINING (PRESS T)
@@ -4046,6 +4130,29 @@ class InteriorScene extends Phaser.Scene {
             this.addSolid(390, 325, 70, 52, 0x574238, "CHAIR");
             this.addTarget(205, 275, "Bed: sleep until 6:00 AM", "sleep", 0xf2cc60);
             this.addTarget(530, 215, "Study computer: read a booklet", "booklet", 0x53a8d6);
+            // FIRST-DAY FRIEND INTRODUCTION
+if (!gameState.friendIntroSeen) {
+    this.hostelFriend = this.add.sprite(
+        370, 380, "cv-friend", "d0f0"
+    ).setDisplaySize(40, 50).setDepth(430);
+
+    this.hostelFriendName = this.add.text(
+        370, 418, "NEIGHBOUR", {
+            fontSize: "12px",
+            color: "#ffffff",
+            fontStyle: "bold",
+            stroke: "#173332",
+            strokeThickness: 3
+        }
+    ).setOrigin(0.5);
+
+    this.addTarget(
+        370, 380,
+        "Meet your neighbour",
+        "friendIntro",
+        0xb77be0
+    );
+}
         } else if (this.location === "lab") {
             this.addSolid(400, 110, 360, 48, 0xf4f1de, "PROGRAMMING LAB — DEBUG, BUILD, LEARN");
             this.add.text(400, 110, "C  |  C++  |  DATA STRUCTURES", { fontSize: "15px", color: "#234", fontStyle: "bold" }).setOrigin(0.5);
@@ -4267,7 +4374,22 @@ class InteriorScene extends Phaser.Scene {
         if (target.action === "exit") {
             this.returnToCampus();
             return;
-        }
+        } 
+if (target.action === "friendIntro") {
+    this.showPanel(
+        "YOUR NEW NEIGHBOUR",
+        "Hey! You're finally here! I live in the next room. Looks like we're neighbours!\n\nI'm still getting used to this place too. If you need anything, just come find me.\n\nBy the way, welcome to Cipher Valley!"
+    );
+
+    gameState.friendIntroSeen = true;
+    this.saveInteriorProgress();
+
+    this.hostelFriend?.destroy();
+    this.hostelFriendName?.destroy();
+
+    return;
+}
+
         if (target.action === "sleep") {
             const current = Number(gameState.gameMinutes) || 0;
             const minutesUntilSix = current < 360 ? 360 - current : 1440 - current + 360;
@@ -4388,6 +4510,6 @@ const config = {
 
 // ==========================================
 // START GAME
-// ==========================================
+// ==========================================+
 
 const game = new Phaser.Game(config);
